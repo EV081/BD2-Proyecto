@@ -1,0 +1,8 @@
+.gitignore
+*/__pycache__
+
+# Archivos temporales que ignorar (Paulo)
+bplustree
+utils/database.py
+utils/pagemanager.py
+
