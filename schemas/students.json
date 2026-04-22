@@ -1,0 +1,10 @@
+{
+    "table_name": "students",
+    "columns": {
+        "id": "int",
+        "name": "str",
+        "age": "int"
+    },
+    "primary_key": "id",
+    "index_type": "bplus"
+}
