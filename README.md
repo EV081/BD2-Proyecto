@@ -6,5 +6,5 @@
 
 #### Arquitectura del DataBaseManager
 
-[Arquitecturav1](docs/db-manager-v1.png)
+![Arquitecturav1](docs/db-manager-v1.png)
  
