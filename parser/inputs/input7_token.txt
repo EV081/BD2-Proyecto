@@ -2,13 +2,14 @@ Scanner
 
 TOKEN(DELETE, "DELETE")
 TOKEN(FROM, "FROM")
-TOKEN(ID, "BRAIN")
+TOKEN(ID, "brain")
 TOKEN(WHERE, "WHERE")
-TOKEN(ID, "EMOTION")
+TOKEN(ID, "emotion")
 TOKEN(EQUAL, "=")
 TOKEN(DQUOTE, """)
-TOKEN(ID, "EACE")
+TOKEN(ID, "peace")
 TOKEN(DQUOTE, """)
+TOKEN(SEMICOLON, ";")
 TOKEN(EOF)
 
 Scanner exitoso

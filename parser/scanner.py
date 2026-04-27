@@ -30,13 +30,16 @@ class Scanner:
         if char.isalpha() or char == '_':
             while self.current < len(self.input) and (self.input[self.current].isalnum() or self.input[self.current] == '_'):
                 self.current +=1
-            lexema = self.input[first:self.current].upper()
+            lexema = self.input[first:self.current]
             tipo = KEYWORDS.get(lexema, TokenType.ID)
-            return Token(tipo, lexema)
+            if tipo == TokenType.ID:
+                return Token(tipo, lexema)
+            return Token(tipo, lexema.upper())
+            
         
         # operadores
         if self.current+1 < len(self.input):
-            lexema = self.input[first:self.current+1]
+            lexema = self.input[first:self.current+2]
             if lexema in OPERATORS:
                 self.current +=2
                 tipo = OPERATORS.get(lexema)
