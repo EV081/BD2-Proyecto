@@ -1,0 +1,11 @@
+{
+    "type": "insert",
+    "table": "CHATGPT",
+    "values": [
+        "try",
+        "to",
+        "solve",
+        "this",
+        "bug"
+    ]
+}

@@ -1,0 +1,13 @@
+{
+    "type": "select",
+    "columns": [
+        "*"
+    ],
+    "table": "MUSIC",
+    "where": {
+        "type": "between",
+        "left": "LIKES",
+        "lower": 1200,
+        "upper": 4000
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "type": "create_table",
+    "name": "TESTTB",
+    "body": {
+        "mode": "columns",
+        "columns": [
+            {
+                "name": "USER_ID",
+                "data_type": "INT",
+                "index": "BPLUS"
+            },
+            {
+                "name": "NAME",
+                "data_type": "TEXT",
+                "index": null
+            },
+            {
+                "name": "AGE",
+                "data_type": "INT",
+                "index": null
+            }
+        ]
+    },
+    "file": "filename.txt"
+}

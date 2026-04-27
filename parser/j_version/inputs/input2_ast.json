@@ -1,0 +1,13 @@
+{
+    "type": "select",
+    "columns": [
+        "*"
+    ],
+    "table": "TESTTB",
+    "where": {
+        "type": "comparison",
+        "left": "ANIMES",
+        "operator": "=",
+        "right": "Wistoris"
+    }
+}

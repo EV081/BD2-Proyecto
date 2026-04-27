@@ -1,0 +1,22 @@
+{
+    "type": "select",
+    "columns": [
+        "*"
+    ],
+    "table": "BACKDOORS",
+    "where": {
+        "type": "in",
+        "left": "IPS",
+        "values": [
+            {
+                "type": "point",
+                "x": 3,
+                "y": 9
+            },
+            {
+                "type": "k",
+                "value": 12
+            }
+        ]
+    }
+}

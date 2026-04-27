@@ -1,0 +1,1 @@
+INSERT INTO chatgpt VALUES ("try", "to", "solve", "this", "bug");

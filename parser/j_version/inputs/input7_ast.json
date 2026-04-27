@@ -1,0 +1,10 @@
+{
+    "type": "delete",
+    "table": "BRAIN",
+    "where": {
+        "type": "comparison",
+        "left": "EMOTION",
+        "operator": "=",
+        "right": "peace"
+    }
+}
