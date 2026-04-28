@@ -3,7 +3,7 @@ import struct
 
 class PageManager:
 
-    DB_FOLDER = "db"
+    DB_FOLDER = "data"
 
     def __init__(self, table_name, record_format, page_size=4096):
         self.path = os.path.join(self.DB_FOLDER, table_name + ".dat")
