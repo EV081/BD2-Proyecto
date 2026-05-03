@@ -1,0 +1,13 @@
+=== STDOUT ===
+Codigo:
+INSERT INTO Estudiantes VALUES (110, "Juan Perez", 15.5)
+DELETE FROM Usuarios WHERE user_id = 500
+
+Ejecucion:
+Insertar en 'Estudiantes' los valores (110, 'Juan Perez', 15.5)
+Eliminar de 'Usuarios' donde user_id = 500
+
+Parser exitoso
+AST guardado en: outputs/ast_8.json
+
+=== STDERR ===

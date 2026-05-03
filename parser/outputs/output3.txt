@@ -1,0 +1,11 @@
+=== STDOUT ===
+Codigo:
+CREATE TABLE Locales (id INT, ubicacion POINT INDEX RTREE) FROM FILE "data/puntos_interes.csv"
+
+Ejecucion:
+Crear tabla 'Locales' con columnas [id:INT, ubicacion:POINT[RTREE]], cargando desde 'data/puntos_interes.csv'
+
+Parser exitoso
+AST guardado en: outputs/ast_3.json
+
+=== STDERR ===

@@ -1,0 +1,19 @@
+Scanner
+
+TOKEN(CREATE, "CREATE")
+TOKEN(TABLE, "TABLE")
+TOKEN(ID, "Usuarios")
+TOKEN(LPAREN, "(")
+TOKEN(ID, "user_id")
+TOKEN(INT, "INT")
+TOKEN(INDEX, "INDEX")
+TOKEN(HASH, "HASH")
+TOKEN(COMMA, ",")
+TOKEN(ID, "username")
+TOKEN(VARCHAR, "VARCHAR")
+TOKEN(RPAREN, ")")
+TOKEN(SEMICOLON, ";")
+TOKEN(EOF)
+
+Scanner exitoso
+

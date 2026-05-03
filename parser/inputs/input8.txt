@@ -1,0 +1,2 @@
+INSERT INTO Estudiantes VALUES (110, "Juan Perez", 15.5);
+DELETE FROM Usuarios WHERE user_id = 500;

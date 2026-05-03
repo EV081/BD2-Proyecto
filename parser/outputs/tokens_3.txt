@@ -1,0 +1,22 @@
+Scanner
+
+TOKEN(CREATE, "CREATE")
+TOKEN(TABLE, "TABLE")
+TOKEN(ID, "Locales")
+TOKEN(LPAREN, "(")
+TOKEN(ID, "id")
+TOKEN(INT, "INT")
+TOKEN(COMMA, ",")
+TOKEN(ID, "ubicacion")
+TOKEN(POINT, "POINT")
+TOKEN(INDEX, "INDEX")
+TOKEN(RTREE, "RTREE")
+TOKEN(RPAREN, ")")
+TOKEN(FROM, "FROM")
+TOKEN(FILE, "FILE")
+TOKEN(STRING_LITERAL, "data/puntos_interes.csv")
+TOKEN(SEMICOLON, ";")
+TOKEN(EOF)
+
+Scanner exitoso
+

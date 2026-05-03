@@ -1,0 +1,11 @@
+=== STDOUT ===
+Codigo:
+CREATE TABLE Usuarios (user_id INT INDEX HASH, username VARCHAR)
+
+Ejecucion:
+Crear tabla 'Usuarios' con columnas [user_id:INT[HASH], username:VARCHAR]
+
+Parser exitoso
+AST guardado en: outputs/ast_2.json
+
+=== STDERR ===

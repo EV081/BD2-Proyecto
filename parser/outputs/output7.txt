@@ -1,0 +1,11 @@
+=== STDOUT ===
+Codigo:
+SELECT * FROM Locales WHERE ubicacion IN (POINT(-12.04, -77.02), K 5)
+
+Ejecucion:
+Buscar en 'Locales' con condicion [ubicacion IN POINT(-12.04, -77.02) K 5] -> columnas [*]
+
+Parser exitoso
+AST guardado en: outputs/ast_7.json
+
+=== STDERR ===

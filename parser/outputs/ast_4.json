@@ -1,0 +1,28 @@
+[
+    {
+        "type": "select",
+        "columns": [
+            "*"
+        ],
+        "table": "Estudiantes",
+        "where": {
+            "type": "comparison",
+            "left": "id",
+            "operator": "=",
+            "right": 105
+        }
+    },
+    {
+        "type": "select",
+        "columns": [
+            "*"
+        ],
+        "table": "Estudiantes",
+        "where": {
+            "type": "comparison",
+            "left": "id",
+            "operator": ">",
+            "right": 105
+        }
+    }
+]

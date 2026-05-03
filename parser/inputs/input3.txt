@@ -1,1 +1,1 @@
-SELECT * FROM music WHERE likes BETWEEN 1200 AND 4000;
+CREATE TABLE Locales (id INT, ubicacion POINT INDEX RTREE) FROM FILE "data/puntos_interes.csv";

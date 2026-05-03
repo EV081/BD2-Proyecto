@@ -13,11 +13,16 @@ class TokenType(Enum):
     DELETE = auto()      # DELETE
     FILE = auto()        # FILE
     
+    # Tipos de Dato
+    INT = auto()
+    FLOAT = auto()
+    VARCHAR = auto()
+    
     # Técnicas de Indexación 
     INDEX = auto()       # INDEX
     SEQUENTIAL = auto()  # SEQUENTIAL
     HASH = auto()        # HASH
-    BPLUS = auto()       # BPLUS
+    BTREE = auto()       # BTREE
     RTREE = auto()       # RTREE
     
     # Operadores Lógicos y Espaciales
@@ -37,15 +42,16 @@ class TokenType(Enum):
     EQUAL = auto()       # =
     LESS = auto()        # <
     GREATER = auto()     # >
+    LESS_EQUAL = auto()     # <=
+    GREATER_EQUAL = auto()  # >=
+    NOT_EQUAL = auto()      # !=
+    MINUS = auto()          # -
+    
     STAR = auto()        # *
     COMMA = auto()       # ,
     LPAREN = auto()      # (
     RPAREN = auto()      # )
     SEMICOLON = auto()   # ;
-    DQUOTE = auto()      # "
-    QUOTE = auto()       # '
-    LBRACKET = auto()    # [
-    RBRACKET = auto()    # ]
     DOT = auto()         # .
     
     # Control
@@ -72,24 +78,27 @@ KEYWORDS = {
     "K": TokenType.K,
     "SEQUENTIAL": TokenType.SEQUENTIAL,
     "HASH": TokenType.HASH,
-    "BPLUS": TokenType.BPLUS,
-    "RTREE": TokenType.RTREE
+    "BTREE": TokenType.BTREE,
+    "RTREE": TokenType.RTREE,
+    "INT": TokenType.INT,
+    "FLOAT": TokenType.FLOAT,
+    "VARCHAR": TokenType.VARCHAR
 }
 
 OPERATORS = {
     ";": TokenType.SEMICOLON,
     "=": TokenType.EQUAL,
+    "<": TokenType.LESS,
+    ">": TokenType.GREATER,
+    "<=": TokenType.LESS_EQUAL,
+    ">=": TokenType.GREATER_EQUAL,
+    "!=": TokenType.NOT_EQUAL,
     "(": TokenType.LPAREN,
     ")": TokenType.RPAREN,
     ",": TokenType.COMMA,
     "*": TokenType.STAR,
-    "<": TokenType.LESS,
-    ">": TokenType.GREATER,
-    "\"": TokenType.DQUOTE,
-    "'": TokenType.QUOTE,
-    "[": TokenType.LBRACKET,
-    "]": TokenType.RBRACKET,
-    ".": TokenType.DOT
+    ".": TokenType.DOT,
+    "-": TokenType.MINUS
 }
 
 class Token:

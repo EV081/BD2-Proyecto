@@ -1,0 +1,15 @@
+[
+    {
+        "type": "select",
+        "columns": [
+            "*"
+        ],
+        "table": "Estudiantes",
+        "where": {
+            "type": "between",
+            "left": "nota",
+            "lower": 11,
+            "upper": 20
+        }
+    }
+]

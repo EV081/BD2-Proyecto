@@ -1,0 +1,19 @@
+[
+    {
+        "type": "create_table",
+        "name": "Locales",
+        "columns": [
+            {
+                "name": "id",
+                "data_type": "INT",
+                "index": null
+            },
+            {
+                "name": "ubicacion",
+                "data_type": "POINT",
+                "index": "RTREE"
+            }
+        ],
+        "file": "data/puntos_interes.csv"
+    }
+]

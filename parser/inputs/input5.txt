@@ -1,1 +1,1 @@
-SELECT * FROM backdoors WHERE ips IN (POINT(3, 9), K 12);
+SELECT * FROM Estudiantes WHERE nota BETWEEN 11 AND 20;

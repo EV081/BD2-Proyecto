@@ -1,0 +1,13 @@
+=== STDOUT ===
+Codigo:
+SELECT * FROM Estudiantes WHERE id = 105
+SELECT * FROM Estudiantes WHERE id > 105
+
+Ejecucion:
+Buscar en 'Estudiantes' con condicion [id = 105] -> columnas [*]
+Buscar en 'Estudiantes' con condicion [id > 105] -> columnas [*]
+
+Parser exitoso
+AST guardado en: outputs/ast_4.json
+
+=== STDERR ===
