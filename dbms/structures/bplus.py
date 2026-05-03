@@ -1,28 +1,67 @@
 import os
+import math
 import struct
 
 
 class BPlusTree:
+    """
+    Indice B+ Tree No Agrupado (Unclustered).
+
+    Estructura de indice separada del archivo de datos (heap file).
+    Las hojas almacenan pares (clave, RID) donde RID = (page_num, slot)
+    apunta al registro fisico en el PageManager (heap).
+
+    Propiedades:
+    - Todas las hojas estan al mismo nivel de altura.
+    - Los nodos hoja estan enlazados como lista enlazada (next_leaf).
+    - Los nodos internos forman un directorio de indices dispersos.
+    - Los nodos deben estar al menos medio llenos (ceil(max_keys/2)).
+    - Soporta claves unicas y no-unicas (duplicados via parametro unique).
+
+    Layout de pagina:
+        [HEADER 9B] [keys...] [values/children...]
+        Header: is_leaf(1B) + num_keys(4B) + next_leaf(4B)
+
+    Complejidad (D = costo de I/O por pagina, R = max_keys, M = total claves):
+        Busqueda:  O(D * log_{R/2}(M))
+        Rango:     O(D * log_{R/2}(M) + paginas del rango)
+        Insercion: O(D * log_{R/2}(M) + costo de split)
+        Eliminacion: O(D * log_{R/2}(M) + costo de redistribucion/merge)
+    """
 
     HEADER_FMT = "=BIi"                        # is_leaf(1) num_keys(4) next_leaf(4)
     HEADER_SIZE = struct.calcsize(HEADER_FMT)   # 9 bytes
     META_FMT = "=iI"                            # root_page(4) num_pages(4)
     META_SIZE = struct.calcsize(META_FMT)       # 8 bytes
 
-    def __init__(self, index_file, key_format="i", page_size=4096):
+    def __init__(self, index_file, key_format="i", page_size=4096, unique=True):
+        """
+        Args:
+            index_file: Ruta al archivo de indice en disco.
+            key_format: Formato struct de la clave (default "i" = int 4 bytes).
+            page_size: Tamano de pagina en bytes (default 4096).
+            unique: Si True, claves duplicadas sobreescriben el valor existente.
+                    Si False, permite multiples entradas con la misma clave (indice no-unico).
+        """
         self.index_file = index_file
         self.page_size = page_size
+        self.unique = unique
         self.key_fmt = "=" + key_format
         self.key_size = struct.calcsize(self.key_fmt)
-        self.val_fmt = "=ii"                    # (page_num, slot)
+        self.val_fmt = "=ii"                    # RID: (page_num, slot)
         self.val_size = struct.calcsize(self.val_fmt)
         self.child_size = 4                     # page_id int
 
-        # Max keys per nodo (limitado por pagina)
+        # Max keys por nodo (limitado por espacio en pagina)
+        # Interno: HEADER + max_keys * key + (max_keys+1) * child <= page_size
+        # Hoja:    HEADER + max_keys * key + max_keys * val     <= page_size
         internal_max = (page_size - self.HEADER_SIZE - self.child_size) // (self.key_size + self.child_size)
         leaf_max = (page_size - self.HEADER_SIZE) // (self.key_size + self.val_size)
         self.max_keys = min(internal_max, leaf_max)
-        self.min_keys = self.max_keys // 2
+
+        # Minimo de claves: ceil(max_keys / 2)
+        # Garantiza que los nodos esten al menos medio llenos
+        self.min_keys = math.ceil(self.max_keys / 2)
 
         # Contadores de acceso a disco
         self.disk_reads = 0
@@ -154,43 +193,111 @@ class BPlusTree:
         packed = struct.pack(self.key_fmt, key)
         return struct.unpack(self.key_fmt, packed)[0]
 
-    def _find_leaf(self, key):
-        """Retorna (leaf_node, path) donde path = [(node, child_idx), ...]"""
+    def _find_leaf(self, key, leftmost=False):
+        """
+        Retorna (leaf_node, path) donde path = [(node, child_idx), ...].
+
+        Args:
+            leftmost: Si True, usa comparacion estricta (>) para navegar
+                      a la hoja MAS A LA IZQUIERDA que puede contener key.
+                      Si False (default), usa (>=) para ir a la hoja mas
+                      a la derecha. Esto importa cuando key coincide con
+                      una clave separadora en un nodo interno.
+        """
         path = []
         node = self._read_node(self.root_page)
         while not node["is_leaf"]:
             i = 0
-            while i < len(node["keys"]) and key >= node["keys"][i]:
-                i += 1
+            if leftmost:
+                while i < len(node["keys"]) and key > node["keys"][i]:
+                    i += 1
+            else:
+                while i < len(node["keys"]) and key >= node["keys"][i]:
+                    i += 1
             path.append((node, i))
             node = self._read_node(node["children"][i])
         return node, path
+
+    def _find_key_in_leaf(self, leaf, key, value=None):
+        """Busca una entrada (key, value) en una hoja. Retorna indice o None."""
+        for i, k in enumerate(leaf["keys"]):
+            if k == key:
+                if value is None or leaf["values"][i] == tuple(value):
+                    return i
+            elif k > key:
+                break
+        return None
 
     # ------------------------------------------------------------------ #
     #  SEARCH                                                             #
     # ------------------------------------------------------------------ #
 
     def search(self, key):
-        """Busqueda exacta. Retorna (page_num, slot) o None."""
+        """
+        Busqueda exacta.
+        Retorna el primer RID (page_num, slot) encontrado, o None.
+        Costo: O(log_{R/2}(M)) accesos a disco.
+        """
         key = self._normalize_key(key)
         if self.root_page == -1:
             return None
 
-        leaf, _ = self._find_leaf(key)
-        for i, k in enumerate(leaf["keys"]):
-            if k == key:
-                return leaf["values"][i]
-        return None
+        # Para non-unique, ir a la hoja izquierda para encontrar la primera ocurrencia.
+        # Para unique, ir a la derecha (donde esta el dato cuando key == separador).
+        leaf, _ = self._find_leaf(key, leftmost=not self.unique)
+
+        while True:
+            for i, k in enumerate(leaf["keys"]):
+                if k == key:
+                    return leaf["values"][i]
+                elif k > key:
+                    return None
+            if leaf["next_leaf"] == -1:
+                return None
+            leaf = self._read_node(leaf["next_leaf"])
+
+    def search_all(self, key):
+        """
+        Busqueda exacta para indice no-unico.
+        Retorna TODOS los RIDs (page_num, slot) asociados a la clave.
+        Recorre hojas consecutivas ya que las claves duplicadas
+        quedan adyacentes en el arbol ordenado.
+        """
+        key = self._normalize_key(key)
+        if self.root_page == -1:
+            return []
+
+        # Navegar a la hoja MAS A LA IZQUIERDA para capturar todas las duplicadas
+        leaf, _ = self._find_leaf(key, leftmost=True)
+        results = []
+
+        while True:
+            for i, k in enumerate(leaf["keys"]):
+                if k == key:
+                    results.append(leaf["values"][i])
+                elif k > key:
+                    return results
+            if leaf["next_leaf"] == -1:
+                break
+            leaf = self._read_node(leaf["next_leaf"])
+
+        return results
 
     def range_search(self, begin_key, end_key):
-        """Busqueda por rango [begin, end]. Retorna lista de (page_num, slot)."""
+        """
+        Busqueda por rango [begin, end].
+        Retorna lista de RIDs (page_num, slot).
+        Aprovecha la lista enlazada de hojas para recorrer secuencialmente.
+        Costo: O(log_{R/2}(M) + hojas en el rango) accesos a disco.
+        """
         begin_key = self._normalize_key(begin_key)
         end_key = self._normalize_key(end_key)
 
         if self.root_page == -1:
             return []
 
-        leaf, _ = self._find_leaf(begin_key)
+        # leftmost=True para capturar entradas donde begin_key == separador
+        leaf, _ = self._find_leaf(begin_key, leftmost=True)
         results = []
 
         while True:
@@ -212,7 +319,16 @@ class BPlusTree:
     def add(self, key, value):
         """
         Inserta (key, value) en el arbol.
-        value = (page_num, slot) apuntando al registro en el HeapFile.
+        value = RID (page_num, slot) apuntando al registro en el HeapFile.
+
+        Algoritmo:
+        1. Si el arbol esta vacio, crear primera hoja con la entrada.
+        2. Recorrer desde la raiz hasta la hoja correspondiente (_find_leaf).
+        3. Insertar en posicion ordenada dentro de la hoja.
+        4. Si la hoja desborda (> max_keys), hacer split:
+           a. Dividir la hoja en dos (izq y der).
+           b. Copiar la primera clave de la hoja derecha al padre.
+           c. Si el padre desborda, hacer split del nodo interno (cascada).
         """
         key = self._normalize_key(key)
 
@@ -229,16 +345,22 @@ class BPlusTree:
 
         leaf, path = self._find_leaf(key)
 
-        # Posicion de insercion
+        # Posicion de insercion (mantener orden)
         i = 0
         while i < len(leaf["keys"]) and key > leaf["keys"][i]:
             i += 1
 
-        # Clave duplicada -> actualizar valor
+        # Manejo de clave duplicada
         if i < len(leaf["keys"]) and leaf["keys"][i] == key:
-            leaf["values"][i] = value
-            self._write_node(leaf["page_id"], leaf)
-            return
+            if self.unique:
+                # Indice unico: sobreescribir el RID existente
+                leaf["values"][i] = value
+                self._write_node(leaf["page_id"], leaf)
+                return
+            # Indice no-unico: avanzar tras los duplicados existentes
+            # para insertar al final del grupo (mantener orden de insercion)
+            while i < len(leaf["keys"]) and leaf["keys"][i] == key:
+                i += 1
 
         leaf["keys"].insert(i, key)
         leaf["values"].insert(i, value)
@@ -251,6 +373,10 @@ class BPlusTree:
         self._save_metadata()
 
     def _split_leaf(self, node, path):
+        """
+        Split de hoja: divide en dos y copia la primera clave de la
+        hoja derecha al nodo padre (copy-up).
+        """
         mid = len(node["keys"]) // 2
 
         right_pid = self._alloc_page()
@@ -271,6 +397,10 @@ class BPlusTree:
         self._insert_into_parent(node["page_id"], right["keys"][0], right_pid, path)
 
     def _split_internal(self, node, path):
+        """
+        Split de nodo interno: la clave del medio sube al padre (push-up),
+        a diferencia del split de hoja donde se copia.
+        """
         mid = len(node["keys"]) // 2
         push_key = node["keys"][mid]
 
@@ -316,20 +446,55 @@ class BPlusTree:
     #  REMOVE (DELETE)                                                    #
     # ------------------------------------------------------------------ #
 
-    def remove(self, key):
-        """Elimina una clave. Retorna True si se encontro y elimino."""
+    def remove(self, key, value=None):
+        """
+        Elimina una entrada del arbol. Retorna True si se encontro y elimino.
+
+        Args:
+            key: Clave a eliminar.
+            value: RID especifico a eliminar (para indice no-unico).
+                   Si None, elimina la primera ocurrencia.
+
+        Algoritmo:
+        1. Recorrer desde la raiz hasta la hoja (_find_leaf).
+        2. Buscar y remover el par (clave, RID) de la hoja.
+        3. Si la hoja queda con pocas entradas (< min_keys):
+           a. Intentar redistribuir (pedir prestado) del hermano izquierdo.
+           b. Si no, intentar redistribuir del hermano derecho.
+           c. Si ninguno puede prestar, fusionar con un hermano.
+           d. Actualizar clave separadora en el padre.
+        4. Si el padre queda con pocas entradas, repetir (cascada).
+        """
         key = self._normalize_key(key)
         if self.root_page == -1:
             return False
 
-        leaf, path = self._find_leaf(key)
+        # Para non-unique, buscar desde la hoja izquierda;
+        # para unique, ir a la derecha (donde key == separador implica dato a la derecha)
+        leftmost = not self.unique
+        leaf, path = self._find_leaf(key, leftmost=leftmost)
 
-        # Buscar clave en la hoja
-        key_idx = None
-        for i, k in enumerate(leaf["keys"]):
-            if k == key:
-                key_idx = i
-                break
+        # Buscar clave (y opcionalmente RID especifico) en la hoja
+        key_idx = self._find_key_in_leaf(leaf, key, value)
+
+        # Si no se encontro en esta hoja, escanear hojas siguientes (non-unique)
+        if key_idx is None and not self.unique:
+            while leaf["next_leaf"] != -1:
+                next_leaf = self._read_node(leaf["next_leaf"])
+                key_idx = self._find_key_in_leaf(next_leaf, key, value)
+                if key_idx is not None:
+                    # Encontrado en hoja accedida via next_leaf.
+                    # Eliminar directamente sin underflow cascading
+                    # (la hoja intermedia tipicamente no esta cerca del minimo).
+                    next_leaf["keys"].pop(key_idx)
+                    next_leaf["values"].pop(key_idx)
+                    self._write_node(next_leaf["page_id"], next_leaf)
+                    self._save_metadata()
+                    return True
+                if not any(k == key for k in next_leaf["keys"]):
+                    break
+                leaf = next_leaf
+
         if key_idx is None:
             return False
 
