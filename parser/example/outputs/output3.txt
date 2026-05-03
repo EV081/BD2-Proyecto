@@ -1,9 +1,0 @@
-=== STDOUT ===
-Parseo exitoso
-Codigo:
-x,y=4,5
-print (x + y)
-
-Interprete:9
-
-=== STDERR ===

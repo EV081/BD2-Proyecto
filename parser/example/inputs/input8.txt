@@ -1,1 +1,0 @@
-x, y, z = 2,3,4; a = if(x,y,z); print(z*z + a)
