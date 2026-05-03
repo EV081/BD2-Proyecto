@@ -1,1 +1,0 @@
-CREATE TABLE testTB (user_id INT INDEX BPLUS, name TEXT, age INT) FROM FILE "filename.txt";

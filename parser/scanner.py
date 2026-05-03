@@ -4,59 +4,81 @@ class Scanner:
     def __init__(self, input_str):
         self.input = input_str
         self.current = 0
-        
+
     def is_white_space(self, c):
         return c in (' ', '\n', '\r', '\t')
-    
+
     def next_token(self):
-        # saltar espacios en blanco
+        # Saltar espacios en blanco
         while self.current < len(self.input) and self.is_white_space(self.input[self.current]):
-            self.current +=1
-        
-        # fin de entrada
+            self.current += 1
+
+        # Fin de entrada
         if self.current >= len(self.input):
             return Token(TokenType.EOF)
-        
+
         first = self.current
         char = self.input[self.current]
-        
-        # números
+
+        # Reconocimiento de String Literals ("texto" o 'texto')
+        if char in ('"', "'"):
+            quote_type = char
+            self.current += 1
+            start_str = self.current
+            while self.current < len(self.input) and self.input[self.current] != quote_type:
+                self.current += 1
+            
+            if self.current >= len(self.input):
+                return Token(TokenType.ERROR, "String sin cerrar")
+            
+            str_val = self.input[start_str:self.current]
+            self.current += 1
+            return Token(TokenType.STRING_LITERAL, str_val)
+
+        # Reconocimiento de números
         if char.isdigit():
             while self.current < len(self.input) and self.input[self.current].isdigit():
-                self.current +=1
+                self.current += 1
+            
+            if self.current < len(self.input) and self.input[self.current] == '.':
+                self.current += 1
+                while self.current < len(self.input) and self.input[self.current].isdigit():
+                    self.current += 1
+                    
             return Token(TokenType.NUMBER, self.input[first:self.current])
-        
-        # ids y keywords
+
+        # IDs y Keywords
         if char.isalpha() or char == '_':
             while self.current < len(self.input) and (self.input[self.current].isalnum() or self.input[self.current] == '_'):
-                self.current +=1
+                self.current += 1
             lexema = self.input[first:self.current]
-            tipo = KEYWORDS.get(lexema, TokenType.ID)
+            
+            tipo = KEYWORDS.get(lexema.upper(), TokenType.ID)
+            
             if tipo == TokenType.ID:
                 return Token(tipo, lexema)
             return Token(tipo, lexema.upper())
-            
-        
-        # operadores
-        if self.current+1 < len(self.input):
-            lexema = self.input[first:self.current+2]
-            if lexema in OPERATORS:
-                self.current +=2
-                tipo = OPERATORS.get(lexema)
-                return Token(tipo, lexema)
+
+        # Reconocimiento de operadores
+        if self.current + 1 < len(self.input):
+            lexema_doble = self.input[first:self.current + 2]
+            if lexema_doble in OPERATORS:
+                self.current += 2
+                tipo = OPERATORS.get(lexema_doble)
+                return Token(tipo, lexema_doble)
+
         if char in OPERATORS:
             tipo = OPERATORS.get(char)
-            self.current +=1
+            self.current += 1
             return Token(tipo, char)
-        # caracter invalido
-        else:
-            self.current +=1
-            return Token(TokenType.ERROR, char)
-        
 
+        # Caracter inválido
+        else:
+            self.current += 1
+            return Token(TokenType.ERROR, char)
 
 def execute_scanner(scanner, inputFile):
-    inputFileName = inputFile.split(".")[0];
+    inputFileName = inputFile.split(".")[0]
     OutputFileName = f"{inputFileName}_token.txt"
     
     try:

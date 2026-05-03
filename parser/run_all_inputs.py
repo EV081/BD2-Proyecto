@@ -12,12 +12,16 @@ if not os.path.exists(input_dir):
     print(f"Error: No se encontró la carpeta '{input_dir}'")
     sys.exit(1)
 
-for i in range(1, 8):
+for i in range(1, 9):
     filename = f"input{i}.txt"
     filepath = os.path.join(input_dir, filename)
+    ast_filepath = os.path.join(input_dir, f"input{i}_ast.json")
     
     if os.path.isfile(filepath):
         print(f"Procesando: {filename}...", end=" ")
+
+        if os.path.isfile(ast_filepath):
+            os.remove(ast_filepath)
         
         result = subprocess.run(
             [sys.executable, main_script, filepath],
@@ -25,11 +29,23 @@ for i in range(1, 8):
             text=True
         )
         
-        if result.returncode == 0:
+        if result.returncode == 0 and os.path.isfile(ast_filepath):
             print("[+] OK")
         else:
             print("[!] ERROR")
-            print(result.stderr)
+            if not os.path.isfile(ast_filepath):
+                print(f"    - No se generó el archivo AST esperado en: {ast_filepath}")
+            
+            if result.stdout.strip():
+                print("    - Salida estándar (stdout):")
+                for line in result.stdout.strip().split('\n'):
+                    print(f"      {line}")
+            
+            if result.stderr.strip():
+                print("    - Error estándar (Traceback/stderr):")
+                for line in result.stderr.strip().split('\n'):
+                    print(f"      {line}")
+            print("-" * 40)
     else:
         print(f"Aviso: {filename} no encontrado en '{input_dir}'")
 

@@ -1,1 +1,0 @@
-SELECT * FROM games WHERE ranked IN (POINT(2, 3), RADIUS 20);

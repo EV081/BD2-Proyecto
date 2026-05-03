@@ -1,0 +1,21 @@
+[
+    {
+        "type": "insert",
+        "table": "Estudiantes",
+        "values": [
+            110,
+            "Juan Perez",
+            15.5
+        ]
+    },
+    {
+        "type": "delete",
+        "table": "Usuarios",
+        "where": {
+            "type": "comparison",
+            "left": "user_id",
+            "operator": "=",
+            "right": 500
+        }
+    }
+]

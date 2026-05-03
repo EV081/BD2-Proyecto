@@ -1,0 +1,24 @@
+[
+    {
+        "type": "create_table",
+        "name": "Estudiantes",
+        "columns": [
+            {
+                "name": "id",
+                "data_type": "INT",
+                "index": "BTREE"
+            },
+            {
+                "name": "nombre",
+                "data_type": "VARCHAR",
+                "index": null
+            },
+            {
+                "name": "nota",
+                "data_type": "FLOAT",
+                "index": null
+            }
+        ],
+        "file": "data/alumnos.csv"
+    }
+]

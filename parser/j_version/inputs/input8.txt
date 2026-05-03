@@ -1,1 +1,0 @@
-SELECT name FROM geodata WHERE zone IN (POINT(10, 20), RADIUS 50, K 7);

@@ -1,1 +1,1 @@
-CREATE TABLE testTB (2 SEQUENTIAL [INDEX BPLUS]) "filename.txt";
+CREATE TABLE Estudiantes (id INT INDEX BTREE, nombre VARCHAR, nota FLOAT) FROM FILE "data/alumnos.csv";

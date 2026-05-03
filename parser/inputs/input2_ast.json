@@ -1,0 +1,19 @@
+[
+    {
+        "type": "create_table",
+        "name": "Usuarios",
+        "columns": [
+            {
+                "name": "user_id",
+                "data_type": "INT",
+                "index": "HASH"
+            },
+            {
+                "name": "username",
+                "data_type": "VARCHAR",
+                "index": null
+            }
+        ],
+        "file": null
+    }
+]

@@ -1,1 +1,1 @@
-SELECT * FROM testTB WHERE animes = "Wistoris";
+CREATE TABLE Usuarios (user_id INT INDEX HASH, username VARCHAR);
