@@ -1,0 +1,9 @@
+=== STDOUT ===
+Parseo exitoso
+Codigo:
+m=max ( 7, 3, 10 ) 
+print (m)
+
+Interprete:10
+
+=== STDERR ===

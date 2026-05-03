@@ -1,0 +1,12 @@
+=== STDOUT ===
+Parseo exitoso
+Codigo:
+a=4
+b=9
+c=16
+x,y=sqrt(a) + sqrt(b),max ( a, b, c ) 
+print (x + y)
+
+Interprete:21
+
+=== STDERR ===

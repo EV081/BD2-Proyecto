@@ -1,7 +1,13 @@
 from scanner import *
+from ast_nodes import (
+    CreateTableStmt, SelectStmt, InsertStmt, DeleteStmt,
+    ColDef, ComparisonCond, BetweenCond, SpatialPointCond, InSpatialCond,
+)
+
 
 class ParserError(Exception):
     pass
+
 
 class Parser:
     def __init__(self, tokens):
@@ -17,7 +23,7 @@ class Parser:
                 if self.check(TokenType.EOF):
                     break
                 statements.append(self.parse_statement())
-        
+
         self.expect(TokenType.EOF)
         return statements
 
@@ -58,12 +64,7 @@ class Parser:
             self.expect(TokenType.FILE)
             file_path = self.parse_path_value()
 
-        return {
-            "type": "create_table",
-            "name": table_name,
-            "columns": columns,
-            "file": file_path,
-        }
+        return CreateTableStmt(name=table_name, columns=columns, file_path=file_path)
 
     # ColDef ::= Id Type [ INDEX IndexTech ]
     def parse_column_def(self):
@@ -74,11 +75,7 @@ class Parser:
         if self.match(TokenType.INDEX):
             index = self.parse_index_technique()
 
-        return {
-            "name": name,
-            "data_type": data_type,
-            "index": index,
-        }
+        return ColDef(name=name, data_type=data_type, index=index)
 
     # SelectStmt ::= SELECT Cols FROM Id [ WHERE Condition ]
     def parse_select(self):
@@ -86,17 +83,12 @@ class Parser:
         columns = self.parse_select_columns()
         self.expect(TokenType.FROM)
         table_name = self.expect(TokenType.ID).text
-        
+
         condition = None
         if self.match(TokenType.WHERE):
             condition = self.parse_condition()
 
-        return {
-            "type": "select",
-            "columns": columns,
-            "table": table_name,
-            "where": condition,
-        }
+        return SelectStmt(columns=columns, table=table_name, where=condition)
 
     # Cols ::= * | Id { , Id }*
     def parse_select_columns(self):
@@ -122,111 +114,75 @@ class Parser:
             values.append(self.parse_value())
 
         self.expect(TokenType.RPAREN)
-        return {
-            "type": "insert",
-            "table": table_name,
-            "values": values,
-        }
+        return InsertStmt(table=table_name, values=values)
 
     # DeleteStmt ::= DELETE FROM Id WHERE Id RelOp Value
     def parse_delete(self):
         self.expect(TokenType.DELETE)
         self.expect(TokenType.FROM)
         table_name = self.expect(TokenType.ID).text
-        
+
         self.expect(TokenType.WHERE)
         left_id = self.expect(TokenType.ID).text
         rel_op = self.parse_relop()
         right_value = self.parse_value()
-        
-        return {
-            "type": "delete",
-            "table": table_name,
-            "where": {
-                "type": "comparison",
-                "left": left_id,
-                "operator": rel_op,
-                "right": right_value
-            }
-        }
+
+        where_cond = ComparisonCond(left=left_id, operator=rel_op, right=right_value)
+        return DeleteStmt(table=table_name, where=where_cond)
 
     # Condition ::= Id RelOp Value | Id BETWEEN Value AND Value | Id IN ( SpatialCond )
     def parse_condition(self):
         left_id = self.expect(TokenType.ID).text
-        
+
         if self.match(TokenType.BETWEEN):
             lower = self.parse_value()
             self.expect(TokenType.AND)
             upper = self.parse_value()
-            return {
-                "type": "between",
-                "left": left_id,
-                "lower": lower,
-                "upper": upper,
-            }
-            
+            return BetweenCond(left=left_id, lower=lower, upper=upper)
+
         if self.match(TokenType.IN):
             self.expect(TokenType.LPAREN)
             spatial_cond = self.parse_spatial_cond()
             self.expect(TokenType.RPAREN)
-            return {
-                "type": "in_spatial",
-                "left": left_id,
-                "spatial_condition": spatial_cond
-            }
+            return InSpatialCond(left=left_id, spatial_condition=spatial_cond)
 
         rel_op = self.parse_relop()
         right_value = self.parse_value()
-        return {
-            "type": "comparison",
-            "left": left_id,
-            "operator": rel_op,
-            "right": right_value,
-        }
+        return ComparisonCond(left=left_id, operator=rel_op, right=right_value)
 
     # SpatialCond ::= POINT ( Number , Number ) , ( RADIUS Number | K Number )
     def parse_spatial_cond(self):
         self.expect(TokenType.POINT)
         self.expect(TokenType.LPAREN)
-        
+
         x_neg = self.match(TokenType.MINUS)
         x_val = self.expect(TokenType.NUMBER).text
         x = -float(x_val) if x_neg else float(x_val)
-        
+
         self.expect(TokenType.COMMA)
-        
+
         y_neg = self.match(TokenType.MINUS)
         y_val = self.expect(TokenType.NUMBER).text
         y = -float(y_val) if y_neg else float(y_val)
-        
+
         self.expect(TokenType.RPAREN)
         self.expect(TokenType.COMMA)
-        
-        spatial_type = None
-        radius_or_k_val = None
-        
-        if self.match(TokenType.RADIUS):
-            spatial_type = "radius"
-            radius_or_k_val = float(self.expect(TokenType.NUMBER).text)
-        elif self.match(TokenType.K):
-            spatial_type = "k"
-            radius_or_k_val = int(self.expect(TokenType.NUMBER).text)
-        else:
-            raise ParserError("Se esperaba RADIUS o K dentro de la condicion espacial")
 
-        return {
-            "type": "spatial_point",
-            "x": x,
-            "y": y,
-            "search_type": spatial_type,
-            "search_value": radius_or_k_val
-        }
+        if self.match(TokenType.RADIUS):
+            radius_val = float(self.expect(TokenType.NUMBER).text)
+            return SpatialPointCond(x=x, y=y, search_type="radius", search_value=radius_val)
+
+        if self.match(TokenType.K):
+            k_val = int(self.expect(TokenType.NUMBER).text)
+            return SpatialPointCond(x=x, y=y, search_type="k", search_value=k_val)
+
+        raise ParserError("Se esperaba RADIUS o K dentro de la condicion espacial")
 
     # RelOp ::= = | < | > | <= | >= | !=
     def parse_relop(self):
         token = self.consume()
         if token is None or token.type not in (
-            TokenType.EQUAL, TokenType.LESS, TokenType.GREATER, 
+            TokenType.EQUAL, TokenType.LESS, TokenType.GREATER,
             TokenType.LESS_EQUAL, TokenType.GREATER_EQUAL, TokenType.NOT_EQUAL
         ):
             raise ParserError("Se esperaba un operador relacional (=, <, >, <=, >=, !=)")
@@ -237,13 +193,13 @@ class Parser:
         token = self.consume()
         if token is None or token.type not in (TokenType.INT, TokenType.FLOAT, TokenType.VARCHAR, TokenType.POINT):
             raise ParserError(f"Tipo de dato no soportado: {token}")
-            
+
         if token.type == TokenType.VARCHAR and self.check(TokenType.LPAREN):
             self.consume()
             size = self.expect(TokenType.NUMBER).text
             self.expect(TokenType.RPAREN)
             return f"{token.text}({size})"
-            
+
         return token.text
 
     # IndexTech ::= SEQUENTIAL | HASH | BTREE | RTREE
@@ -258,15 +214,15 @@ class Parser:
         is_negative = False
         if self.match(TokenType.MINUS):
             is_negative = True
-            
+
         token = self.consume()
         if token is None:
             raise ParserError("Se esperaba un valor")
-        
+
         if token.type == TokenType.NUMBER:
             val = int(token.text) if token.text.isdigit() else float(token.text)
             return -val if is_negative else val
-            
+
         if token.type in (TokenType.STRING_LITERAL, TokenType.ID):
             if is_negative:
                 raise ParserError("Un texto no puede ser negativo")

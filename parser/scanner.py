@@ -77,9 +77,20 @@ class Scanner:
             self.current += 1
             return Token(TokenType.ERROR, char)
 
-def execute_scanner(scanner, inputFile):
-    inputFileName = inputFile.split(".")[0]
-    OutputFileName = f"{inputFileName}_token.txt"
+def execute_scanner(scanner, inputFile, output_dir=None):
+    import os
+    base_name = os.path.basename(inputFile)
+    name, _ = os.path.splitext(base_name)
+    
+    if output_dir:
+        if name.startswith("input"):
+            idx = name[5:]
+            OutputFileName = os.path.join(output_dir, f"tokens_{idx}.txt")
+        else:
+            OutputFileName = os.path.join(output_dir, f"{name}_token.txt")
+    else:
+        inputFileName, _ = os.path.splitext(inputFile)
+        OutputFileName = f"{inputFileName}_token.txt"
     
     try:
         with open(OutputFileName, 'w', encoding='utf-8') as out_file:

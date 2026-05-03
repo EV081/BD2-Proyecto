@@ -1,0 +1,11 @@
+=== STDOUT ===
+Codigo:
+SELECT * FROM Estudiantes WHERE nota BETWEEN 11 AND 20
+
+Ejecucion:
+Buscar en 'Estudiantes' con condicion [nota BETWEEN 11 AND 20] -> columnas [*]
+
+Parser exitoso
+AST guardado en: outputs/ast_5.json
+
+=== STDERR ===

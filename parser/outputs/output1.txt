@@ -1,0 +1,11 @@
+=== STDOUT ===
+Codigo:
+CREATE TABLE Estudiantes (id INT INDEX BTREE, nombre VARCHAR, nota FLOAT) FROM FILE "data/alumnos.csv"
+
+Ejecucion:
+Crear tabla 'Estudiantes' con columnas [id:INT[BTREE], nombre:VARCHAR, nota:FLOAT], cargando desde 'data/alumnos.csv'
+
+Parser exitoso
+AST guardado en: outputs/ast_1.json
+
+=== STDERR ===
