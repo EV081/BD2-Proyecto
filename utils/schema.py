@@ -46,7 +46,7 @@ class SchemaManager:
             )
             
         with open(self.schema_filename, "r", encoding="utf-8") as file:
-            self.scema = json.load(file)
+            self.schema = json.load(file)
         
         return self.schema
 
@@ -71,5 +71,5 @@ class SchemaManager:
         """
         Verifica si exista el schema
         """
-        return os.path.exist(self.schema_filename)
+        return os.path.exists(self.schema_filename)
 

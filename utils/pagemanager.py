@@ -33,7 +33,7 @@ class PageManager:
                 if page[offset] == 1:
                     self.free_slots.append((p, slot))
                 else:
-                    if p > self.last_page or (p == self.last_page and s >= self.last_slot):
+                    if p > self.last_page or (p == self.last_page and slot >= self.last_slot):
                         self.last_page = p
                         self.last_slot = slot
 
