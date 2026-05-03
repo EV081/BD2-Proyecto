@@ -2,8 +2,8 @@
 DataBase Manager
 """
 
-from utils.pagemanager import PageManager
-from utils.schema import SchemaManager
+from dbms.utils.pagemanager import PageManager
+from dbms.utils.schema import SchemaManager
 
 
 class DataBase:
