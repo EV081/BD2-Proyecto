@@ -6,7 +6,7 @@ class PageManager:
     DB_FOLDER = "data"
 
     def __init__(self, table_name, record_format, page_size=4096):
-        self.path = os.path.join(self.DB_FOLDER, table_name + ".dat")
+        self.path = os.path.join(self.DB_FOLDER, table_name + ".bin")
         self.page_size = page_size
         self.struct = struct.Struct(record_format)
         self.record_size = self.struct.size + 1  # +1 deleted flag
