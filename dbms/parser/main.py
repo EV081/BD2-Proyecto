@@ -40,6 +40,16 @@ def execute_parser(scanner, input_path, output_dir=None, persist_ast=True):
     def _normalize_result(node, result):
         statement = node.to_dict()
 
+        if statement.get("type") == "select" and isinstance(result, dict):
+            if "columns" in result and "rows" in result:
+                return {
+                    "statement": statement,
+                    "type": "select",
+                    "table": statement.get("table"),
+                    "columns": result["columns"],
+                    "rows": result["rows"],
+                }
+
         if isinstance(result, list):
             if statement.get("type") == "select":
                 return {

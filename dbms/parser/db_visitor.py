@@ -241,7 +241,10 @@ class DBVisitor(Visitor):
                 print(f"  ... ({len(records) - 50} mas)")
         self._print_metrics(m)
 
-        return records
+        return {
+            "columns": col_names,
+            "rows": records,
+        }
 
     class _SelectExecutor:
         """Ejecutor interno para condiciones WHERE de SELECT. Retorna (records, metrics)."""
