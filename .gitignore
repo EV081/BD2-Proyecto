@@ -4,3 +4,4 @@ indexes/
 data/
 schemas/
 uploaded_files/
+.direnv/
