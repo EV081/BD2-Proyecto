@@ -11,6 +11,7 @@ Conecta el parser SQL con el DBMS:
 import os
 import sys
 import csv
+import time
 
 # Agregar raiz del proyecto al path para importar dbms
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -57,6 +58,15 @@ class DBVisitor(Visitor):
     def __init__(self):
         # Cache de tablas abiertas en la sesion
         self.tables = {}
+        # Metricas de la ultima operacion
+        self.last_metrics = None
+
+    @staticmethod
+    def _print_metrics(m):
+        """Imprime metricas de I/O y tiempo."""
+        print(f"  Metricas: {m['time_ms']:.3f} ms | "
+              f"Reads: {m['total_reads']} (heap={m['heap_reads']}, idx={m['index_reads']}) | "
+              f"Writes: {m['total_writes']} (heap={m['heap_writes']}, idx={m['index_writes']})")
 
     def _get_table(self, name):
         """Retorna la instancia DataBase para una tabla (carga si es necesario)."""
@@ -169,6 +179,9 @@ class DBVisitor(Visitor):
         point_cols = db.point_columns
         count = 0
 
+        db._reset_all_stats()
+        t0 = time.perf_counter()
+
         with open(file_path, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
 
@@ -202,7 +215,10 @@ class DBVisitor(Visitor):
                 db.insert(record)
                 count += 1
 
+        elapsed = (time.perf_counter() - t0) * 1000
+        m = db._collect_metrics(elapsed)
         print(f"  {count} registros cargados desde '{node.file_path}'")
+        self._print_metrics(m)
 
     # ================================================================ #
     #  SELECT                                                           #
@@ -212,10 +228,11 @@ class DBVisitor(Visitor):
         db = self._get_table(node.table)
 
         if node.where is None:
-            records = db.select_all()
+            records, m = db.select_all(metrics=True)
         else:
-            records = node.where.accept(self._SelectExecutor(db))
+            records, m = node.where.accept(self._SelectExecutor(db))
 
+        self.last_metrics = m
         col_names, records = self._format_results(db, records, node.columns)
 
         # Imprimir resultados
@@ -226,24 +243,26 @@ class DBVisitor(Visitor):
                 print(f"  {r}")
             if len(records) > 50:
                 print(f"  ... ({len(records) - 50} mas)")
+        self._print_metrics(m)
 
         return records
 
     class _SelectExecutor:
-        """Ejecutor interno para condiciones WHERE de SELECT."""
+        """Ejecutor interno para condiciones WHERE de SELECT. Retorna (records, metrics)."""
         def __init__(self, db):
             self.db = db
 
         def visit_comparison_cond(self, node):
             if node.operator == "=":
-                return self.db.select(node.left, node.right)
+                return self.db.select(node.left, node.right, metrics=True)
             # Para otros operadores: full scan + filtro
             col_pos = list(self.db.schema.keys()).index(node.left)
-            all_recs = self.db.select_all()
-            return [r for r in all_recs if self._compare(r[col_pos], node.operator, node.right)]
+            all_recs, m = self.db.select_all(metrics=True)
+            filtered = [r for r in all_recs if self._compare(r[col_pos], node.operator, node.right)]
+            return filtered, m
 
         def visit_between_cond(self, node):
-            return self.db.select_range(node.left, node.lower, node.upper)
+            return self.db.select_range(node.left, node.lower, node.upper, metrics=True)
 
         def visit_in_spatial_cond(self, node):
             sp = node.spatial_condition
@@ -256,12 +275,14 @@ class DBVisitor(Visitor):
                 col_x, col_y = col_name, col_name
 
             if sp.search_type == "radius":
-                return self.db.select_radius(col_x, col_y, sp.x, sp.y, sp.search_value)
+                return self.db.select_radius(col_x, col_y, sp.x, sp.y, sp.search_value, metrics=True)
             elif sp.search_type == "k":
-                return self.db.select_knn(col_x, col_y, sp.x, sp.y, sp.search_value)
+                return self.db.select_knn(col_x, col_y, sp.x, sp.y, sp.search_value, metrics=True)
 
         def visit_spatial_point_cond(self, node):
-            return []
+            return [], {"time_ms": 0, "heap_reads": 0, "heap_writes": 0,
+                        "index_reads": 0, "index_writes": 0,
+                        "total_reads": 0, "total_writes": 0}
 
         @staticmethod
         def _compare(val, op, target):
@@ -308,8 +329,10 @@ class DBVisitor(Visitor):
             else:
                 record[col] = str(val)
 
-        rid = db.insert(record)
+        rid, m = db.insert(record, metrics=True)
+        self.last_metrics = m
         print(f"Insertado en '{node.table}': {tuple(node.values)} -> RID {rid}")
+        self._print_metrics(m)
         return rid
 
     # ================================================================ #
@@ -325,8 +348,10 @@ class DBVisitor(Visitor):
                 f"DELETE solo soporta operador '=', se recibio '{cond.operator}'"
             )
 
-        deleted = db.delete(cond.left, cond.right)
+        deleted, m = db.delete(cond.left, cond.right, metrics=True)
+        self.last_metrics = m
         print(f"Eliminados {deleted} registros de '{node.table}' donde {cond.left} = {cond.right!r}")
+        self._print_metrics(m)
         return deleted
 
     # ================================================================ #
