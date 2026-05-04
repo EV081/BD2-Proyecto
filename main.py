@@ -72,3 +72,57 @@ async def query(query: Query):
         raise HTTPException(status_code=status_code, detail=error)
 
     return result
+
+
+@app.get("/csv/data")
+async def get_csv_data_list():
+    data_folder = os.path.join(PROJECT_ROOT, "uploaded_files")
+
+    if not os.path.isdir(data_folder):
+        return {"csv_files": []}
+
+    csv_files = []
+    for filename in os.listdir(data_folder):
+        if filename.endswith(".csv"):
+            csv_files.append(filename)
+
+    csv_files.sort()
+    return {"csv_files": csv_files}
+
+@app.post("/csv/data")
+async def upload_csv_data(file: bytes, filename: str):
+    data_folder = os.path.join(PROJECT_ROOT, "uploaded_files")
+
+    if not os.path.isdir(data_folder):
+        os.makedirs(data_folder)
+        
+    #normalize the filename, and if it has an invalidad name, raise an error
+    if not filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail={"type": "InvalidFileName", "message": "Filename must end with .csv"})
+    filename = filename.replace("/", "_").replace("\\", "_")  # Prevent directory traversal
+    
+    file_path = os.path.join(data_folder, filename)
+
+    try:
+        with open(file_path, "wb") as out_file:
+            out_file.write(file)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail={"type": "FileUploadError", "message": f"Error saving file: {str(e)}"})
+
+    return {"message": f"File '{filename}' uploaded successfully."}
+
+@app.delete("/csv/data/{filename}")
+async def delete_csv_data(filename: str):
+    data_folder = os.path.join(PROJECT_ROOT, "uploaded_files")
+    file_path = os.path.join(data_folder, filename)
+
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail={"type": "FileNotFoundError", "message": f"File '{filename}' not found."})
+
+    try:
+        os.remove(file_path)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail={"type": "FileDeletionError", "message": f"Error deleting file: {str(e)}"})
+
+    return {"message": f"File '{filename}' deleted successfully."}
+

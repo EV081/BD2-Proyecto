@@ -3,3 +3,4 @@ __pycache__/
 indexes/
 data/
 schemas/
+uploaded_files/
