@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+indexes/
+data/
+schemas/
+uploaded_files/

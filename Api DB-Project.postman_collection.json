@@ -1,0 +1,138 @@
+{
+  "info": {
+    "_postman_id": "e85aea79-80db-4e98-b270-ac12d10d3cd1",
+    "name": "Api DB-Project",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "45428889"
+  },
+  "item": [
+    {
+      "name": "Insert test",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"query\":\"INSERT INTO Estudiantes VALUES (110, 'Juan Perez', 15.5)\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/query",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "query"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Select test",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"query\":\"select * from Estudiantes\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/query",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "query"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get tables and schema",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{host}}/tables",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "tables"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create test",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"query\":\"CREATE TABLE Estudiantes (id INT INDEX BTREE, nombre VARCHAR, nota FLOAT)\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/query",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "query"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Create test with PK (no soportado)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"query\":\"CREATE TABLE HarderNya (id INT INDEX BTREE, nombre VARCHAR, nota FLOAT)\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/query",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "query"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "host",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ]
+}

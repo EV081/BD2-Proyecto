@@ -9,19 +9,15 @@ Conecta el parser SQL con el DBMS:
 """
 
 import os
-import sys
 import csv
 import time
 
-# Agregar raiz del proyecto al path para importar dbms
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from dbms.dbengine import DataBase
-from ast_nodes import (
+from .ast_nodes import (
     CreateTableStmt, SelectStmt, InsertStmt, DeleteStmt,
     ComparisonCond, BetweenCond, SpatialPointCond, InSpatialCond,
 )
-from visitor import Visitor
+from .visitor import Visitor
 
 
 # Mapeo de tipos del parser a tipos del dbengine
@@ -245,7 +241,10 @@ class DBVisitor(Visitor):
                 print(f"  ... ({len(records) - 50} mas)")
         self._print_metrics(m)
 
-        return records
+        return {
+            "columns": col_names,
+            "rows": records,
+        }
 
     class _SelectExecutor:
         """Ejecutor interno para condiciones WHERE de SELECT. Retorna (records, metrics)."""
