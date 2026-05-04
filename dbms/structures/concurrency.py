@@ -1,8 +1,9 @@
+import os
 import threading
 import time
 from enum import Enum
 
-from structures.bplus import BPlusTree
+from dbms.structures.bplus import BPlusTree
 
 
 # ===================================================================== #
@@ -328,10 +329,6 @@ class ConcurrentBPlusTree(BPlusTree):
     def _load_metadata(self):
         with self._meta_lock:
             super()._load_metadata()
-
-
-# Necesitamos os para _write_page_raw
-import os
 
 
 # ===================================================================== #
