@@ -4,6 +4,7 @@ import json
 from scanner import *
 from parser import Parser, ParserError
 from visitor import PrintVisitor, ExecuteVisitor
+from db_visitor import DBVisitor
 
 
 def collect_tokens(scanner):
@@ -35,11 +36,11 @@ def execute_parser(scanner, input_path, output_dir=None):
         for node in ast_nodes:
             node.accept(printer)
 
-        # --- ExecuteVisitor: muestra qué haría la BD (Ejecucion) ---
+        # --- DBVisitor: ejecuta realmente contra el motor de BD ---
         print("\nEjecucion:")
-        executor = ExecuteVisitor()
+        db_visitor = DBVisitor()
         for node in ast_nodes:
-            node.accept(executor)
+            node.accept(db_visitor)
 
         # --- Serialización JSON ---
         write_ast_file(output_path, [node.to_dict() for node in ast_nodes])

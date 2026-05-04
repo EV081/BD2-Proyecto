@@ -21,44 +21,82 @@ class DataBase:
     # Tipos de indice soportados (extensible para rtree, sequential, hash)
     INDEX_TYPES = {"bplus", "rtree", "sequential", "hash"}
 
-    def __init__(self, table_name, schema=None):
+    def __init__(self, table_name, schema=None, primary_key=None):
         self.table_name = table_name
-        self.sm = SchemaManager(table_name, schema=schema)
+        self.sm = SchemaManager(table_name)
         self.pm = None
-        self.schema = None
+        self.schema = None        # {"col": "type", ...}
+        self.primary_key = None   # "col_name" o None
 
-        # {column_name: {"type": "bplus"|"rtree"|..., "index": <instancia>, "unique": bool}}
+        # {column_or_tuple: {"type": "bplus"|"rtree"|..., "index": <instancia>, "unique": bool}}
         self.indexes = {}
 
-        self._load_or_create(schema)
+        # Columnas POINT logicas: {"ubicacion": ("ubicacion_x", "ubicacion_y")}
+        self.point_columns = {}
+
+        self._load_or_create(schema, primary_key)
 
     # ------------------------
     # INIT
     # ------------------------
-    def _load_or_create(self, schema):
-        # Caso 1: ya existe schema -> cargar
+    def _load_or_create(self, schema, primary_key):
         if self.sm.schema_exists():
-            existing = self.sm.get_schema()
+            raw = self.sm.get_schema()
 
-            if schema is not None and schema != existing:
+            # Formato nuevo: {"columns": {...}, "primary_key": ..., "indexes": [...]}
+            if isinstance(raw, dict) and "columns" in raw:
+                columns = raw["columns"]
+                saved_pk = raw.get("primary_key")
+                indexes_meta = raw.get("indexes", [])
+            else:
+                # Formato viejo: {"col": "type", ...} — compatibilidad
+                columns = raw
+                saved_pk = None
+                indexes_meta = []
+
+            if schema is not None and schema != columns:
                 raise ValueError(
                     "El schema ya existe. No se puede modificar."
                 )
 
-            self.schema = existing
+            self.schema = columns
+            self.primary_key = saved_pk
+            self.point_columns = {
+                k: tuple(v) for k, v in raw.get("point_columns", {}).items()
+            }
 
-        # Caso 2: no existe -> crear
+            # Crear PageManager
+            record_format = self._build_struct_format(self.schema)
+            self.pm = PageManager(self.table_name, record_format)
+
+            # Recrear indices desde la metadata guardada
+            for idx_meta in indexes_meta:
+                col = idx_meta["column"]
+                if isinstance(col, list):
+                    col = tuple(col)
+                self.create_index(col, index_type=idx_meta["type"],
+                                  unique=idx_meta["unique"], _save_meta=False)
+
         else:
             if schema is None:
                 raise ValueError("No existe schema y no se proporcionó uno.")
 
-            self.sm.schema = schema
-            self.sm.create_schema()
-            self.schema = schema
+            if primary_key and primary_key not in schema:
+                raise ValueError(f"Primary key '{primary_key}' no existe en el schema.")
 
-        # Crear PageManager
-        record_format = self._build_struct_format(self.schema)
-        self.pm = PageManager(self.table_name, record_format)
+            self.schema = schema
+            self.primary_key = primary_key
+
+            # Guardar en formato nuevo
+            self._save_schema()
+
+            # Crear PageManager
+            record_format = self._build_struct_format(self.schema)
+            self.pm = PageManager(self.table_name, record_format)
+
+            # Auto-crear indice unico sobre la primary key
+            if primary_key:
+                self.create_index(primary_key, index_type="bplus", unique=True)
 
     # ------------------------
     # SCHEMA -> STRUCT
@@ -98,10 +136,33 @@ class DataBase:
         return tuple(values)
 
     # ================================================================ #
+    #  SCHEMA PERSISTENCE                                               #
+    # ================================================================ #
+
+    def _save_schema(self):
+        """Guarda columns + primary_key + indexes en el JSON."""
+        indexes_meta = []
+        for idx_key, info in self.indexes.items():
+            col = list(idx_key) if isinstance(idx_key, tuple) else idx_key
+            indexes_meta.append({
+                "column": col,
+                "type": info["type"],
+                "unique": info["unique"],
+            })
+
+        self.sm.schema = {
+            "columns": self.schema,
+            "primary_key": self.primary_key,
+            "indexes": indexes_meta,
+            "point_columns": {k: list(v) for k, v in self.point_columns.items()},
+        }
+        self.sm.create_schema()
+
+    # ================================================================ #
     #  INDICES                                                          #
     # ================================================================ #
 
-    def create_index(self, column, index_type="bplus", unique=False):
+    def create_index(self, column, index_type="bplus", unique=False, _save_meta=True):
         """
         Crea un indice sobre una columna (o par de columnas para rtree).
 
@@ -141,6 +202,9 @@ class DataBase:
                 "index": idx,
                 "unique": False,
             }
+
+            if _save_meta:
+                self._save_schema()
             return idx
 
         # ---- B+Tree y otros indices 1D ----
@@ -167,6 +231,8 @@ class DataBase:
             "unique": unique,
         }
 
+        if _save_meta:
+            self._save_schema()
         return idx
 
     def _build_index(self, column, idx):
@@ -196,6 +262,7 @@ class DataBase:
         if column not in self.indexes:
             raise ValueError(f"No existe indice sobre '{column}'.")
         del self.indexes[column]
+        self._save_schema()
 
     def has_index(self, column):
         return column in self.indexes
