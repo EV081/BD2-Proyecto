@@ -4,30 +4,6 @@ import struct
 
 
 class BPlusTree:
-    """
-    Indice B+ Tree No Agrupado (Unclustered).
-
-    Estructura de indice separada del archivo de datos (heap file).
-    Las hojas almacenan pares (clave, RID) donde RID = (page_num, slot)
-    apunta al registro fisico en el PageManager (heap).
-
-    Propiedades:
-    - Todas las hojas estan al mismo nivel de altura.
-    - Los nodos hoja estan enlazados como lista enlazada (next_leaf).
-    - Los nodos internos forman un directorio de indices dispersos.
-    - Los nodos deben estar al menos medio llenos (ceil(max_keys/2)).
-    - Soporta claves unicas y no-unicas (duplicados via parametro unique).
-
-    Layout de pagina:
-        [HEADER 9B] [keys...] [values/children...]
-        Header: is_leaf(1B) + num_keys(4B) + next_leaf(4B)
-
-    Complejidad (D = costo de I/O por pagina, R = max_keys, M = total claves):
-        Busqueda:  O(D * log_{R/2}(M))
-        Rango:     O(D * log_{R/2}(M) + paginas del rango)
-        Insercion: O(D * log_{R/2}(M) + costo de split)
-        Eliminacion: O(D * log_{R/2}(M) + costo de redistribucion/merge)
-    """
 
     HEADER_FMT = "=BIi"                        # is_leaf(1) num_keys(4) next_leaf(4)
     HEADER_SIZE = struct.calcsize(HEADER_FMT)   # 9 bytes
@@ -35,22 +11,14 @@ class BPlusTree:
     META_SIZE = struct.calcsize(META_FMT)       # 8 bytes
 
     def __init__(self, index_file, key_format="i", page_size=4096, unique=True):
-        """
-        Args:
-            index_file: Ruta al archivo de indice en disco.
-            key_format: Formato struct de la clave (default "i" = int 4 bytes).
-            page_size: Tamano de pagina en bytes (default 4096).
-            unique: Si True, claves duplicadas sobreescriben el valor existente.
-                    Si False, permite multiples entradas con la misma clave (indice no-unico).
-        """
         self.index_file = index_file
         self.page_size = page_size
         self.unique = unique
         self.key_fmt = "=" + key_format
         self.key_size = struct.calcsize(self.key_fmt)
-        self.val_fmt = "=ii"                    # RID: (page_num, slot)
+        self.val_fmt = "=ii"                    # Record IDentifier: (page_num, slot)
         self.val_size = struct.calcsize(self.val_fmt)
-        self.child_size = 4                     # page_id int
+        self.child_size = 4                     # page_id
 
         # Max keys por nodo (limitado por espacio en pagina)
         # Interno: HEADER + max_keys * key + (max_keys+1) * child <= page_size
@@ -59,7 +27,6 @@ class BPlusTree:
         leaf_max = (page_size - self.HEADER_SIZE) // (self.key_size + self.val_size)
         self.max_keys = min(internal_max, leaf_max)
 
-        # Minimo de claves: ceil(max_keys / 2)
         # Garantiza que los nodos esten al menos medio llenos
         self.min_keys = math.ceil(self.max_keys / 2)
 
@@ -71,9 +38,12 @@ class BPlusTree:
         self.root_page = -1
         self.num_pages = 1   # page 0 = metadata
 
-        os.makedirs(os.path.dirname(os.path.abspath(index_file)), exist_ok=True)
+        # Guardar el archivo de indice dentro de la carpeta "indexes"
+        index_dir = os.path.join(os.path.dirname(os.path.abspath(index_file)), "indexes")
+        os.makedirs(index_dir, exist_ok=True)
+        self.index_file = os.path.join(index_dir, os.path.basename(index_file))
 
-        if os.path.exists(index_file) and os.path.getsize(index_file) >= page_size:
+        if os.path.exists(self.index_file) and os.path.getsize(self.index_file) >= page_size:
             self._load_metadata()
         else:
             self._init_file()
@@ -194,16 +164,6 @@ class BPlusTree:
         return struct.unpack(self.key_fmt, packed)[0]
 
     def _find_leaf(self, key, leftmost=False):
-        """
-        Retorna (leaf_node, path) donde path = [(node, child_idx), ...].
-
-        Args:
-            leftmost: Si True, usa comparacion estricta (>) para navegar
-                      a la hoja MAS A LA IZQUIERDA que puede contener key.
-                      Si False (default), usa (>=) para ir a la hoja mas
-                      a la derecha. Esto importa cuando key coincide con
-                      una clave separadora en un nodo interno.
-        """
         path = []
         node = self._read_node(self.root_page)
         while not node["is_leaf"]:
@@ -219,7 +179,6 @@ class BPlusTree:
         return node, path
 
     def _find_key_in_leaf(self, leaf, key, value=None):
-        """Busca una entrada (key, value) en una hoja. Retorna indice o None."""
         for i, k in enumerate(leaf["keys"]):
             if k == key:
                 if value is None or leaf["values"][i] == tuple(value):
@@ -229,15 +188,10 @@ class BPlusTree:
         return None
 
     # ------------------------------------------------------------------ #
-    #  SEARCH                                                             #
+    #  BUSQUEDA                                                             #
     # ------------------------------------------------------------------ #
 
     def search(self, key):
-        """
-        Busqueda exacta.
-        Retorna el primer RID (page_num, slot) encontrado, o None.
-        Costo: O(log_{R/2}(M)) accesos a disco.
-        """
         key = self._normalize_key(key)
         if self.root_page == -1:
             return None
@@ -256,25 +210,32 @@ class BPlusTree:
                 return None
             leaf = self._read_node(leaf["next_leaf"])
 
-    def search_all(self, key):
+    def search_all(self, key, limit=0, offset=0):
         """
-        Busqueda exacta para indice no-unico.
-        Retorna TODOS los RIDs (page_num, slot) asociados a la clave.
-        Recorre hojas consecutivas ya que las claves duplicadas
-        quedan adyacentes en el arbol ordenado.
+        Retorna los RIDs asociados a una clave (indice no-unico).
+
+        Args:
+            key: Clave a buscar.
+            limit: Maximo de resultados a retornar (0 = sin limite).
+            offset: Cantidad de resultados a saltar antes de empezar a recoger.
         """
         key = self._normalize_key(key)
         if self.root_page == -1:
             return []
 
-        # Navegar a la hoja MAS A LA IZQUIERDA para capturar todas las duplicadas
         leaf, _ = self._find_leaf(key, leftmost=True)
         results = []
+        skipped = 0
 
         while True:
             for i, k in enumerate(leaf["keys"]):
                 if k == key:
+                    if skipped < offset:
+                        skipped += 1
+                        continue
                     results.append(leaf["values"][i])
+                    if limit and len(results) >= limit:
+                        return results
                 elif k > key:
                     return results
             if leaf["next_leaf"] == -1:
@@ -283,12 +244,15 @@ class BPlusTree:
 
         return results
 
-    def range_search(self, begin_key, end_key):
+    def range_search(self, begin_key, end_key, limit=0, offset=0):
         """
         Busqueda por rango [begin, end].
-        Retorna lista de RIDs (page_num, slot).
-        Aprovecha la lista enlazada de hojas para recorrer secuencialmente.
-        Costo: O(log_{R/2}(M) + hojas en el rango) accesos a disco.
+
+        Args:
+            begin_key: Clave inicial (inclusive).
+            end_key: Clave final (inclusive).
+            limit: Maximo de resultados a retornar (0 = sin limite).
+            offset: Cantidad de resultados a saltar antes de empezar a recoger.
         """
         begin_key = self._normalize_key(begin_key)
         end_key = self._normalize_key(end_key)
@@ -296,16 +260,21 @@ class BPlusTree:
         if self.root_page == -1:
             return []
 
-        # leftmost=True para capturar entradas donde begin_key == separador
         leaf, _ = self._find_leaf(begin_key, leftmost=True)
         results = []
+        skipped = 0
 
         while True:
             for i, k in enumerate(leaf["keys"]):
                 if k > end_key:
                     return results
                 if k >= begin_key:
+                    if skipped < offset:
+                        skipped += 1
+                        continue
                     results.append(leaf["values"][i])
+                    if limit and len(results) >= limit:
+                        return results
             if leaf["next_leaf"] == -1:
                 break
             leaf = self._read_node(leaf["next_leaf"])
@@ -317,19 +286,6 @@ class BPlusTree:
     # ------------------------------------------------------------------ #
 
     def add(self, key, value):
-        """
-        Inserta (key, value) en el arbol.
-        value = RID (page_num, slot) apuntando al registro en el HeapFile.
-
-        Algoritmo:
-        1. Si el arbol esta vacio, crear primera hoja con la entrada.
-        2. Recorrer desde la raiz hasta la hoja correspondiente (_find_leaf).
-        3. Insertar en posicion ordenada dentro de la hoja.
-        4. Si la hoja desborda (> max_keys), hacer split:
-           a. Dividir la hoja en dos (izq y der).
-           b. Copiar la primera clave de la hoja derecha al padre.
-           c. Si el padre desborda, hacer split del nodo interno (cascada).
-        """
         key = self._normalize_key(key)
 
         # Arbol vacio: crear primera hoja
@@ -373,10 +329,6 @@ class BPlusTree:
         self._save_metadata()
 
     def _split_leaf(self, node, path):
-        """
-        Split de hoja: divide en dos y copia la primera clave de la
-        hoja derecha al nodo padre (copy-up).
-        """
         mid = len(node["keys"]) // 2
 
         right_pid = self._alloc_page()
@@ -397,10 +349,6 @@ class BPlusTree:
         self._insert_into_parent(node["page_id"], right["keys"][0], right_pid, path)
 
     def _split_internal(self, node, path):
-        """
-        Split de nodo interno: la clave del medio sube al padre (push-up),
-        a diferencia del split de hoja donde se copia.
-        """
         mid = len(node["keys"]) // 2
         push_key = node["keys"][mid]
 
@@ -447,24 +395,6 @@ class BPlusTree:
     # ------------------------------------------------------------------ #
 
     def remove(self, key, value=None):
-        """
-        Elimina una entrada del arbol. Retorna True si se encontro y elimino.
-
-        Args:
-            key: Clave a eliminar.
-            value: RID especifico a eliminar (para indice no-unico).
-                   Si None, elimina la primera ocurrencia.
-
-        Algoritmo:
-        1. Recorrer desde la raiz hasta la hoja (_find_leaf).
-        2. Buscar y remover el par (clave, RID) de la hoja.
-        3. Si la hoja queda con pocas entradas (< min_keys):
-           a. Intentar redistribuir (pedir prestado) del hermano izquierdo.
-           b. Si no, intentar redistribuir del hermano derecho.
-           c. Si ninguno puede prestar, fusionar con un hermano.
-           d. Actualizar clave separadora en el padre.
-        4. Si el padre queda con pocas entradas, repetir (cascada).
-        """
         key = self._normalize_key(key)
         if self.root_page == -1:
             return False
