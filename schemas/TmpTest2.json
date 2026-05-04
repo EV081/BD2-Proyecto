@@ -1,0 +1,16 @@
+{
+    "columns": {
+        "id": "int",
+        "nombre": "char(255)",
+        "nota": "float"
+    },
+    "primary_key": null,
+    "indexes": [
+        {
+            "column": "id",
+            "type": "bplus",
+            "unique": false
+        }
+    ],
+    "point_columns": {}
+}

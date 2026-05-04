@@ -1,5 +1,5 @@
-from scanner import *
-from ast_nodes import (
+from .scanner import *
+from .ast_nodes import (
     CreateTableStmt, SelectStmt, InsertStmt, DeleteStmt,
     ColDef, ComparisonCond, BetweenCond, SpatialPointCond, InSpatialCond,
 )

@@ -9,7 +9,7 @@ Estructura
 """
 
 from abc import ABC, abstractmethod
-from ast_nodes import (
+from .ast_nodes import (
     CreateTableStmt, SelectStmt, InsertStmt, DeleteStmt,
     ComparisonCond, BetweenCond, SpatialPointCond, InSpatialCond,
 )

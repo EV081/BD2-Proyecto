@@ -1,4 +1,4 @@
-from lexer_token import *
+from .lexer_token import *
 
 class Scanner:
     def __init__(self, input_str):

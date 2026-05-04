@@ -1,0 +1,1 @@
+"""Paquete principal del DBMS del proyecto BD2."""
