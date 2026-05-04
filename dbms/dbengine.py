@@ -2,6 +2,8 @@
 DataBase Manager
 """
 
+import time
+
 from dbms.utils.pagemanager import PageManager
 from dbms.utils.schema import SchemaManager
 from dbms.structures.bplus import BPlusTree
@@ -134,6 +136,39 @@ class DataBase:
             if self.schema[col].startswith("char") and isinstance(values[i], bytes):
                 values[i] = values[i].rstrip(b"\x00").decode("utf-8")
         return tuple(values)
+
+    # ================================================================ #
+    #  METRICS                                                            #
+    # ================================================================ #
+
+    def _reset_all_stats(self):
+        """Resetea contadores de I/O del heap y todos los indices."""
+        if self.pm:
+            self.pm.reset_stats()
+        for info in self.indexes.values():
+            info["index"].reset_stats()
+
+    def _collect_metrics(self, elapsed_ms):
+        """Recolecta metricas de I/O de heap + indices + tiempo."""
+        heap_reads = self.pm.disk_reads if self.pm else 0
+        heap_writes = self.pm.disk_writes if self.pm else 0
+
+        index_reads = 0
+        index_writes = 0
+        for info in self.indexes.values():
+            idx = info["index"]
+            index_reads += idx.disk_reads
+            index_writes += idx.disk_writes
+
+        return {
+            "time_ms": round(elapsed_ms, 3),
+            "heap_reads": heap_reads,
+            "heap_writes": heap_writes,
+            "index_reads": index_reads,
+            "index_writes": index_writes,
+            "total_reads": heap_reads + index_reads,
+            "total_writes": heap_writes + index_writes,
+        }
 
     # ================================================================ #
     #  SCHEMA PERSISTENCE                                               #
@@ -271,7 +306,10 @@ class DataBase:
     #  INSERT                                                           #
     # ================================================================ #
 
-    def insert(self, record_dict):
+    def insert(self, record_dict, metrics=False):
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         values = []
 
         for col in self.schema:
@@ -294,14 +332,20 @@ class DataBase:
                     key = key.encode("utf-8")
                 info["index"].add(key, rid)
 
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return rid, self._collect_metrics(elapsed)
         return rid
 
     # ================================================================ #
     #  SELECT                                                           #
     # ================================================================ #
 
-    def select_all(self):
+    def select_all(self, metrics=False):
         """Full scan — retorna todos los registros."""
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         results = []
 
         for p in range(self.pm.num_pages()):
@@ -310,13 +354,19 @@ class DataBase:
                 if rec:
                     results.append(self._clean_record(rec))
 
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return results, self._collect_metrics(elapsed)
         return results
 
-    def select(self, column, value):
+    def select(self, column, value, metrics=False):
         """
         Busca registros donde column == value.
         Si hay indice, lo usa. Si no, hace full scan.
         """
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         if isinstance(value, str):
             value_key = value.encode("utf-8")
         else:
@@ -330,9 +380,10 @@ class DataBase:
             if unique:
                 rid = idx.search(value_key)
                 if rid is None:
-                    return []
-                rec = self.pm.read_record(rid[0], rid[1])
-                return [self._clean_record(rec)] if rec else []
+                    results = []
+                else:
+                    rec = self.pm.read_record(rid[0], rid[1])
+                    results = [self._clean_record(rec)] if rec else []
             else:
                 rids = idx.search_all(value_key)
                 results = []
@@ -340,25 +391,30 @@ class DataBase:
                     rec = self.pm.read_record(page, slot)
                     if rec:
                         results.append(self._clean_record(rec))
-                return results
+        else:
+            # Ruta sin indice: full scan
+            col_pos = self._col_index(column)
+            results = []
 
-        # Ruta sin indice: full scan
-        col_pos = self._col_index(column)
-        results = []
+            for p in range(self.pm.num_pages()):
+                for s in range(self.pm.records_per_page()):
+                    rec = self.pm.read_record(p, s)
+                    if rec and rec[col_pos] == value_key:
+                        results.append(self._clean_record(rec))
 
-        for p in range(self.pm.num_pages()):
-            for s in range(self.pm.records_per_page()):
-                rec = self.pm.read_record(p, s)
-                if rec and rec[col_pos] == value_key:
-                    results.append(self._clean_record(rec))
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return results, self._collect_metrics(elapsed)
         return results
 
-    def select_range(self, column, begin, end):
+    def select_range(self, column, begin, end, metrics=False):
         """
         Busca registros donde begin <= column <= end.
         Si hay indice, lo usa. Si no, hace full scan.
         """
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         if isinstance(begin, str):
             begin = begin.encode("utf-8")
         if isinstance(end, str):
@@ -373,30 +429,35 @@ class DataBase:
                 rec = self.pm.read_record(page, slot)
                 if rec:
                     results.append(self._clean_record(rec))
-            return results
+        else:
+            # Ruta sin indice: full scan
+            col_pos = self._col_index(column)
+            results = []
 
-        # Ruta sin indice: full scan
-        col_pos = self._col_index(column)
-        results = []
+            for p in range(self.pm.num_pages()):
+                for s in range(self.pm.records_per_page()):
+                    rec = self.pm.read_record(p, s)
+                    if rec and begin <= rec[col_pos] <= end:
+                        results.append(self._clean_record(rec))
 
-        for p in range(self.pm.num_pages()):
-            for s in range(self.pm.records_per_page()):
-                rec = self.pm.read_record(p, s)
-                if rec and begin <= rec[col_pos] <= end:
-                    results.append(self._clean_record(rec))
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return results, self._collect_metrics(elapsed)
         return results
 
     # ================================================================ #
     #  DELETE                                                           #
     # ================================================================ #
 
-    def delete(self, column, value):
+    def delete(self, column, value, metrics=False):
         """
         Elimina registros donde column == value.
         Si hay indice, lo usa. Si no, hace full scan.
         Actualiza todos los indices afectados.
         """
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         if isinstance(value, str):
             value_key = value.encode("utf-8")
         else:
@@ -449,6 +510,9 @@ class DataBase:
 
             deleted += 1
 
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return deleted, self._collect_metrics(elapsed)
         return deleted
 
     # ================================================================ #
@@ -471,30 +535,60 @@ class DataBase:
                 records.append(self._clean_record(rec))
         return records
 
-    def select_radius(self, col_x, col_y, cx, cy, radius, limit=0, offset=0):
+    def select_radius(self, col_x, col_y, cx, cy, radius, limit=0, offset=0, metrics=False):
         """
         Busca registros dentro de distancia `radius` desde (cx, cy).
         Requiere indice R-Tree sobre (col_x, col_y).
         """
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         idx = self._get_rtree(col_x, col_y)
         results = idx.radius_search(cx, cy, radius, limit=limit, offset=offset)
-        return self._fetch_records(results)
+        records = self._fetch_records(results)
 
-    def select_knn(self, col_x, col_y, qx, qy, k, limit=0, offset=0):
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return records, self._collect_metrics(elapsed)
+        return records
+
+    def select_knn(self, col_x, col_y, qx, qy, k, limit=0, offset=0, metrics=False):
         """
         Busca los k registros mas cercanos a (qx, qy).
         Requiere indice R-Tree sobre (col_x, col_y).
         """
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         idx = self._get_rtree(col_x, col_y)
         results = idx.knn_search(qx, qy, k, limit=limit, offset=offset)
-        return self._fetch_records(results)
+        records = self._fetch_records(results)
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return records, self._collect_metrics(elapsed)
+        return records
 
     def select_radius_json(self, col_x, col_y, cx, cy, radius, limit=0, offset=0):
         """Busqueda circular con JSON para visualizacion frontend."""
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         idx = self._get_rtree(col_x, col_y)
-        return idx.radius_search_json(cx, cy, radius, limit=limit, offset=offset)
+        result = idx.radius_search_json(cx, cy, radius, limit=limit, offset=offset)
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        result["metrics"] = self._collect_metrics(elapsed)
+        return result
 
     def select_knn_json(self, col_x, col_y, qx, qy, k, limit=0, offset=0):
         """k-NN con JSON para visualizacion frontend."""
+        self._reset_all_stats()
+        t0 = time.perf_counter()
+
         idx = self._get_rtree(col_x, col_y)
-        return idx.knn_search_json(qx, qy, k, limit=limit, offset=offset)
+        result = idx.knn_search_json(qx, qy, k, limit=limit, offset=offset)
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        result["metrics"] = self._collect_metrics(elapsed)
+        return result

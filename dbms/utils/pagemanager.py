@@ -14,6 +14,10 @@ class PageManager:
         self.last_page = 0
         self.last_slot = 0
 
+        # Contadores de acceso a disco
+        self.disk_reads = 0
+        self.disk_writes = 0
+
         os.makedirs(self.DB_FOLDER, exist_ok=True)
 
         if not os.path.exists(self.path):
@@ -50,12 +54,18 @@ class PageManager:
     # ------------------------
     # PAGE
     # ------------------------
+    def reset_stats(self):
+        self.disk_reads = 0
+        self.disk_writes = 0
+
     def read_page(self, page_num):
+        self.disk_reads += 1
         with open(self.path, "rb") as f:
             f.seek(page_num * self.page_size)
             return f.read(self.page_size)
 
     def write_page(self, page_num, data):
+        self.disk_writes += 1
         with open(self.path, "rb+") as f:
             f.seek(page_num * self.page_size)
             f.write(data)
