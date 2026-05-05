@@ -8,6 +8,8 @@ from dbms.utils.pagemanager import PageManager
 from dbms.utils.schema import SchemaManager
 from dbms.structures.bplus import BPlusTree
 from dbms.structures.rtree import RTree
+from dbms.structures.sequentialfile import SequentialFile
+from dbms.structures.Extendible_Hashing import ExtendibleHash
 
 
 class DataBase:
@@ -229,8 +231,9 @@ class DataBase:
             index_file = f"{self.table_name}_{col_x}_{col_y}.idx"
             idx = RTree(index_file)
 
-            # Indexar datos existentes
-            self._build_rtree_index(col_x, col_y, idx)
+            # Solo reconstruir si es un indice nuevo
+            if _save_meta:
+                self._build_rtree_index(col_x, col_y, idx)
 
             self.indexes[idx_key] = {
                 "type": "rtree",
@@ -254,11 +257,16 @@ class DataBase:
 
         if index_type == "bplus":
             idx = BPlusTree(index_file, key_format=key_format, unique=unique)
+        elif index_type == "sequential":
+            idx = SequentialFile(index_file, key_format=key_format, unique=unique)
+        elif index_type == "hash":
+            idx = ExtendibleHash(index_file, key_format=key_format, unique=unique)
         else:
             raise NotImplementedError(f"Indice '{index_type}' aun no implementado.")
 
-        # Si la tabla ya tiene datos, indexar los registros existentes
-        self._build_index(column, idx)
+        # Solo reconstruir el indice si es nuevo (no cuando se carga desde disco)
+        if _save_meta:
+            self._build_index(column, idx)
 
         self.indexes[column] = {
             "type": index_type,
@@ -420,8 +428,8 @@ class DataBase:
         if isinstance(end, str):
             end = end.encode("utf-8")
 
-        # Ruta con indice
-        if column in self.indexes:
+        # Ruta con indice (hash no soporta range, usa full scan)
+        if column in self.indexes and self.indexes[column]["type"] != "hash":
             idx = self.indexes[column]["index"]
             rids = idx.range_search(begin, end)
             results = []
@@ -430,7 +438,7 @@ class DataBase:
                 if rec:
                     results.append(self._clean_record(rec))
         else:
-            # Ruta sin indice: full scan
+            # Full scan (sin indice o indice hash)
             col_pos = self._col_index(column)
             results = []
 

@@ -159,13 +159,15 @@ class DBVisitor(Visitor):
         return db
 
     def _load_from_file(self, db, node):
-        """Carga datos desde un archivo CSV."""
-        file_path = node.file_path
+        """Carga datos desde un archivo CSV ubicado en uploaded_files/."""
+        # Ruta absoluta a uploaded_files/ en la raiz del proyecto
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        uploaded_dir = os.path.join(project_root, "uploaded_files")
+        os.makedirs(uploaded_dir, exist_ok=True)
 
-        # Buscar el archivo relativo al directorio del proyecto
-        if not os.path.isabs(file_path):
-            project_root = os.path.join(os.path.dirname(__file__), "..")
-            file_path = os.path.join(project_root, file_path)
+        # Solo usar el nombre del archivo (sin ruta relativa)
+        filename = os.path.basename(node.file_path)
+        file_path = os.path.join(uploaded_dir, filename)
 
         if not os.path.exists(file_path):
             print(f"  Advertencia: archivo '{node.file_path}' no encontrado.")
