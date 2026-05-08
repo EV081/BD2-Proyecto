@@ -6,6 +6,7 @@ from .scanner import *
 from .parser import Parser, ParserError
 from .visitor import PrintVisitor
 from .db_visitor import DBVisitor
+from dbms.dbengine import execute_sql
 
 
 def collect_tokens(scanner):
@@ -213,8 +214,7 @@ def main():
 
 
 def moduled_main(query):
-    scanner_inst = Scanner(query)
-    return execute_parser(scanner_inst, "input.sql", None, persist_ast=False)
+    return execute_sql(query)
 
 
 if __name__ == "__main__":

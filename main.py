@@ -9,7 +9,7 @@ PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from dbms.parser.main import moduled_main
+from dbms.dbengine import execute_sql
 from dbms.utils.schema import SchemaManager
 
 UPLOADED_FILES_DIR = os.path.join(PROJECT_ROOT, "uploaded_files")
@@ -68,7 +68,7 @@ async def list_tables():
 
 @app.post("/query")
 async def query(query: Query):
-    result = moduled_main(query.query)
+    result = execute_sql(query.query)
 
     if not result.get("success", False):
         error = result.get("error", {})

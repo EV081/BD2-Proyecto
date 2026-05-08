@@ -621,3 +621,12 @@ class DataBase:
         elapsed = (time.perf_counter() - t0) * 1000
         result["metrics"] = self._collect_metrics(elapsed)
         return result
+
+
+def execute_sql(query, input_path="input.sql", output_dir=None, persist_ast=False):
+    """Ejecuta el parser SQL desde la capa de utilidades del dbengine."""
+    from dbms.parser.main import execute_parser
+    from dbms.parser.scanner import Scanner
+
+    scanner = Scanner(query)
+    return execute_parser(scanner, input_path, output_dir, persist_ast=persist_ast)
