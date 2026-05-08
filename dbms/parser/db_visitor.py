@@ -18,7 +18,7 @@ from .ast_nodes import (
     ComparisonCond, BetweenCond, SpatialPointCond, InSpatialCond,
 )
 from .visitor import Visitor
-
+from dbms.utils.external_sort import external_sort
 
 # Mapeo de tipos del parser a tipos del dbengine
 TYPE_MAP = {
@@ -181,7 +181,7 @@ class DBVisitor(Visitor):
         t0 = time.perf_counter()
 
         with open(file_path, "r", encoding="utf-8") as f:
-            reader = csv.reader(f)
+            reader = csv.reader(f, delimiter=';')
 
             # Detectar header
             first_row = next(reader, None)
@@ -229,6 +229,22 @@ class DBVisitor(Visitor):
             records, m = db.select_all(metrics=True)
         else:
             records, m = node.where.accept(self._SelectExecutor(db))
+
+        if getattr(node, 'order_by', None):
+            sorted_records, sort_stats = external_sort(db, node.order_by)
+            records = [db._clean_record(r) for r in sorted_records]
+
+            # Imprimir métricas de cada fase por separado
+            print(f"  [TPMMS - Fase 1] reads={sort_stats['pages_read_p1']} | writes={sort_stats['pages_written_p1']} | time={sort_stats['time_phase1_sec']}s")
+            print(f"  [TPMMS - Fase 2] reads={sort_stats['pages_read_p2']} | writes={sort_stats['pages_written_p2']} | time={sort_stats['time_phase2_sec']}s")
+            print(f"  [TPMMS - Total]  runs={sort_stats['runs_generated']} | io_total={sort_stats['io_total']} | time={sort_stats['time_total_sec']}s")
+
+            # Combinar métricas del select_all con las del sort
+            m['heap_reads']   += sort_stats['pages_read']
+            m['heap_writes']  += sort_stats['pages_written']
+            m['total_reads']  += sort_stats['pages_read']
+            m['total_writes'] += sort_stats['pages_written']
+            m['time_ms']      += sort_stats['time_total_sec'] * 1000
 
         self.last_metrics = m
         col_names, records = self._format_results(db, records, node.columns)
