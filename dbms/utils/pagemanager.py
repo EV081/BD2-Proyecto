@@ -51,6 +51,35 @@ class PageManager:
     def num_pages(self):
         return os.path.getsize(self.path) // self.page_size
 
+    @staticmethod
+    def count_records(path, record_format, page_size=4096):
+        """Cuenta los registros activos de una tabla sin crear archivos nuevos."""
+        if not os.path.exists(path):
+            return 0
+
+        struct_obj = struct.Struct(record_format)
+        record_size = struct_obj.size + 1  # +1 deleted flag
+        records_per_page = page_size // record_size
+
+        if records_per_page <= 0:
+            return 0
+
+        count = 0
+        with open(path, "rb") as f:
+            while True:
+                page = f.read(page_size)
+                if not page:
+                    break
+
+                for slot in range(records_per_page):
+                    offset = slot * record_size
+                    if offset >= len(page):
+                        break
+                    if page[offset] == 0:
+                        count += 1
+
+        return count
+
     # ------------------------
     # PAGE
     # ------------------------

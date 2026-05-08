@@ -51,12 +51,15 @@ async def list_tables():
             except (OSError, json.JSONDecodeError):
                 continue
 
+            columns = schema_data.get("columns", {})
+
             tables.append({
                 "name": table_name,
-                "columns": schema_data.get("columns", {}),
+                "columns": columns,
                 "primary_key": schema_data.get("primary_key"),
                 "indexes": schema_data.get("indexes", []),
                 "point_columns": schema_data.get("point_columns", {}),
+                "record_count": schema_data.get("record_count", 0),
             })
 
     tables.sort(key=lambda table: table["name"])
@@ -124,48 +127,3 @@ async def delete_csv_data(filename: str):
         raise HTTPException(status_code=500, detail={"type": "FileDeletionError", "message": f"Error deleting file: {str(e)}"})
 
     return {"message": f"File '{filename}' deleted successfully."}
-
-
-class CreateTableFromCSV(BaseModel):
-    table_name: str
-    filename: str
-    columns: list[dict]  # [{"name": "col1", "type": "INT", "index": "BTREE"}, ...]
-
-
-@app.post("/tables/from-csv")
-async def create_table_from_csv(body: CreateTableFromCSV):
-    """
-    Crea una tabla a partir de un CSV previamente subido a uploaded_files/.
-
-    Body:
-      - table_name: nombre de la tabla
-      - filename: nombre del archivo CSV en uploaded_files/
-      - columns: lista de columnas con name, type, y opcionalmente index
-        Ejemplo: [{"name": "id", "type": "INT", "index": "BTREE"}, {"name": "nombre", "type": "VARCHAR"}]
-    """
-    csv_path = os.path.join(UPLOADED_FILES_DIR, body.filename)
-    if not os.path.isfile(csv_path):
-        raise HTTPException(status_code=404, detail={
-            "type": "FileNotFoundError",
-            "message": f"CSV file '{body.filename}' not found in uploaded_files/."
-        })
-
-    # Construir la query SQL CREATE TABLE ... FROM FILE
-    col_defs = []
-    for col in body.columns:
-        col_def = f"{col['name']} {col['type']}"
-        if col.get("index"):
-            col_def += f" INDEX {col['index']}"
-        col_defs.append(col_def)
-
-    columns_sql = ", ".join(col_defs)
-    query_sql = f"CREATE TABLE {body.table_name} ({columns_sql}) FROM FILE '{body.filename}'"
-
-    result = moduled_main(query_sql)
-
-    if not result.get("success", False):
-        error = result.get("error", {})
-        raise HTTPException(status_code=400, detail=error)
-
-    return result
-

@@ -138,10 +138,11 @@ class CreateTableStmt:
 
 class SelectStmt:
     """SELECT Cols FROM Id [ WHERE Condition ]"""
-    def __init__(self, columns: list[str], table: str, where=None):
+    def __init__(self, columns: list[str], table: str, where=None, order_by=None):
         self.columns = columns
         self.table = table
-        self.where = where   # None | ComparisonCond | BetweenCond | InSpatialCond
+        self.where = where
+        self.order_by = order_by 
 
     def accept(self, visitor: "Visitor"):
         return visitor.visit_select(self)
@@ -152,6 +153,7 @@ class SelectStmt:
             "columns": self.columns,
             "table": self.table,
             "where": self.where.to_dict() if self.where is not None else None,
+            "order_by": self.order_by,
         }
 
 
