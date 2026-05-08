@@ -31,6 +31,7 @@ class DataBase:
         self.pm = None
         self.schema = None        # {"col": "type", ...}
         self.primary_key = None   # "col_name" o None
+        self.record_count = 0
 
         # {column_or_tuple: {"type": "bplus"|"rtree"|..., "index": <instancia>, "unique": bool}}
         self.indexes = {}
@@ -39,6 +40,20 @@ class DataBase:
         self.point_columns = {}
 
         self._load_or_create(schema, primary_key)
+
+    @staticmethod
+    def build_struct_format(schema):
+        """Construye el formato struct a partir del schema de columnas."""
+        fmt = ""
+
+        for col, col_type in schema.items():
+            if col_type.startswith("char"):
+                size = int(col_type.split("(")[1].split(")")[0])
+                fmt += f"{size}s"
+            else:
+                fmt += DataBase.TYPE_MAP[col_type]
+
+        return fmt
 
     # ------------------------
     # INIT
@@ -65,12 +80,13 @@ class DataBase:
 
             self.schema = columns
             self.primary_key = saved_pk
+            self.record_count = raw.get("record_count", 0) if isinstance(raw, dict) else 0
             self.point_columns = {
                 k: tuple(v) for k, v in raw.get("point_columns", {}).items()
             }
 
             # Crear PageManager
-            record_format = self._build_struct_format(self.schema)
+            record_format = self.build_struct_format(self.schema)
             self.pm = PageManager(self.table_name, record_format)
 
             # Recrear indices desde la metadata guardada
@@ -81,6 +97,14 @@ class DataBase:
                 self.create_index(col, index_type=idx_meta["type"],
                                   unique=idx_meta["unique"], _save_meta=False)
 
+            if not isinstance(raw, dict) or "record_count" not in raw:
+                self.record_count = PageManager.count_records(
+                    self.pm.path,
+                    record_format,
+                    self.PAGE_SIZE,
+                )
+                self._save_schema()
+
         else:
             if schema is None:
                 raise ValueError("No existe schema y no se proporcionó uno.")
@@ -90,12 +114,13 @@ class DataBase:
 
             self.schema = schema
             self.primary_key = primary_key
+            self.record_count = 0
 
             # Guardar en formato nuevo
             self._save_schema()
 
             # Crear PageManager
-            record_format = self._build_struct_format(self.schema)
+            record_format = self.build_struct_format(self.schema)
             self.pm = PageManager(self.table_name, record_format)
 
             # Auto-crear indice unico sobre la primary key
@@ -105,18 +130,6 @@ class DataBase:
     # ------------------------
     # SCHEMA -> STRUCT
     # ------------------------
-    def _build_struct_format(self, schema):
-        fmt = ""
-
-        for col, col_type in schema.items():
-            if col_type.startswith("char"):
-                size = int(col_type.split("(")[1].split(")")[0])
-                fmt += f"{size}s"
-            else:
-                fmt += self.TYPE_MAP[col_type]
-
-        return fmt
-
     def _col_index(self, column):
         """Retorna la posicion numerica de una columna en el schema."""
         return list(self.schema.keys()).index(column)
@@ -192,6 +205,7 @@ class DataBase:
             "primary_key": self.primary_key,
             "indexes": indexes_meta,
             "point_columns": {k: list(v) for k, v in self.point_columns.items()},
+            "record_count": self.record_count,
         }
         self.sm.create_schema()
 
@@ -339,6 +353,9 @@ class DataBase:
                 if isinstance(key, str):
                     key = key.encode("utf-8")
                 info["index"].add(key, rid)
+
+        self.record_count += 1
+        self._save_schema()
 
         elapsed = (time.perf_counter() - t0) * 1000
         if metrics:
@@ -517,6 +534,10 @@ class DataBase:
                     info["index"].remove(key, value=(page, slot))
 
             deleted += 1
+
+        if deleted:
+            self.record_count = max(0, self.record_count - deleted)
+            self._save_schema()
 
         elapsed = (time.perf_counter() - t0) * 1000
         if metrics:
