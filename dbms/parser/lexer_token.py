@@ -12,6 +12,8 @@ class TokenType(Enum):
     VALUES = auto()      # VALUES
     DELETE = auto()      # DELETE
     FILE = auto()        # FILE
+    ORDER = auto()
+    BY = auto()
     
     # Tipos de Dato
     INT = auto()
@@ -82,7 +84,9 @@ KEYWORDS = {
     "RTREE": TokenType.RTREE,
     "INT": TokenType.INT,
     "FLOAT": TokenType.FLOAT,
-    "VARCHAR": TokenType.VARCHAR
+    "VARCHAR": TokenType.VARCHAR,
+    "ORDER": TokenType.ORDER,
+    "BY": TokenType.BY,
 }
 
 OPERATORS = {
