@@ -87,8 +87,13 @@ class Parser:
         condition = None
         if self.match(TokenType.WHERE):
             condition = self.parse_condition()
+        
+        order_by = None   
+        if self.match(TokenType.ORDER):
+            self.expect(TokenType.BY)
+            order_by = self.expect(TokenType.ID).text
 
-        return SelectStmt(columns=columns, table=table_name, where=condition)
+        return SelectStmt(columns=columns, table=table_name, where=condition, order_by=order_by)
 
     # Cols ::= * | Id { , Id }*
     def parse_select_columns(self):
