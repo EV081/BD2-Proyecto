@@ -9,8 +9,8 @@ PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from dbms.dbengine import execute_sql
-from dbms.utils.schema import SchemaManager
+from src.api.dbengine import execute_sql
+from src.storage.schema import SchemaManager
 
 UPLOADED_FILES_DIR = os.path.join(PROJECT_ROOT, "uploaded_files")
 
