@@ -1,22 +1,13 @@
-"""
-Tests del B+ Tree
-Ejecutar con:
-    python dbms/structures/test_bplus.py
-"""
-
 import os
 import sys
 import math
 import shutil
+from src.structures.bplus import BPlusTree
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from dbms.structures.bplus import BPlusTree
-
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 PASSED = 0
 FAILED = 0
-
 
 def header(name):
     print()
@@ -42,10 +33,7 @@ def cleanup():
         shutil.rmtree("indexes")
 
 
-# ================================================================== #
-#  TEST 1: Carpeta indexes                                            #
-# ================================================================== #
-
+#  TEST 1: Carpeta indexes                                            
 def test_indexes_folder():
     header("TEST 1: Carpeta indexes")
     cleanup()
@@ -55,10 +43,7 @@ def test_indexes_folder():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 2: Insert + search unico                                      #
-# ================================================================== #
-
+#  TEST 2: Insert + search unico                                      
 def test_unique_basic():
     header("TEST 2: Insert + search unico")
     cleanup()
@@ -70,11 +55,7 @@ def test_unique_basic():
     check("search(99) = None", idx.search(99) is None)
     cleanup()
 
-
-# ================================================================== #
-#  TEST 3: Non-unique                                                  #
-# ================================================================== #
-
+#  TEST 3: Non-unique                                                  
 def test_non_unique():
     header("TEST 3: Non-unique")
     cleanup()
@@ -88,10 +69,7 @@ def test_non_unique():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 4: Massive insert/delete                                       #
-# ================================================================== #
-
+#  TEST 4: Massive insert/delete                                       
 def test_massive():
     header("TEST 4: Massive insert/delete (500 keys)")
     cleanup()
@@ -108,10 +86,7 @@ def test_massive():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 5: Massive duplicates                                          #
-# ================================================================== #
-
+#  TEST 5: Massive duplicates                                          
 def test_massive_duplicates():
     header("TEST 5: Massive duplicates (400 same key)")
     cleanup()
@@ -123,10 +98,7 @@ def test_massive_duplicates():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 6: Range search                                                #
-# ================================================================== #
-
+#  TEST 6: Range search                                                
 def test_range():
     header("TEST 6: Range search")
     cleanup()
@@ -139,10 +111,7 @@ def test_range():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 7: Pagination                                                  #
-# ================================================================== #
-
+#  TEST 7: Pagination                                                  
 def test_pagination():
     header("TEST 7: Pagination (10000 records)")
     cleanup()
@@ -157,10 +126,7 @@ def test_pagination():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 8: Persistence                                                 #
-# ================================================================== #
-
+#  TEST 8: Persistence                                                 
 def test_persistence():
     header("TEST 8: Persistence")
     cleanup()
@@ -172,10 +138,7 @@ def test_persistence():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 9: Remove specific RID                                         #
-# ================================================================== #
-
+#  TEST 9: Remove specific RID                                         
 def test_remove_specific():
     header("TEST 9: Remove specific RID (non-unique)")
     cleanup()
@@ -191,10 +154,7 @@ def test_remove_specific():
     cleanup()
 
 
-# ================================================================== #
-#  TEST 10: IO stats                                                   #
-# ================================================================== #
-
+#  TEST 10: IO stats                                                   
 def test_io_stats():
     header("TEST 10: IO stats")
     cleanup()
@@ -204,8 +164,7 @@ def test_io_stats():
     idx.reset_stats()
     idx.search(500)
     h = math.ceil(math.log(1000, max(2, idx.max_keys // 2)))
-    check(f"search reads={idx.disk_reads} <= height+1={h + 1}",
-          idx.disk_reads <= h + 1)
+    check(f"search reads={idx.disk_reads} <= height+1={h + 1}", idx.disk_reads <= h + 1)
     cleanup()
 
 
