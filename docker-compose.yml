@@ -5,4 +5,34 @@ services:
       dockerfile: dockerfile
     ports:
       - "8000:8000"
+    volumes:
+      - api-data:/app/data
+      - api-indexes:/app/indexes
+      - api-schemas:/app/schemas
+      - api-uploads:/app/uploaded_files
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  api-data:
+  api-indexes:
+  api-schemas:
+  api-uploads:
