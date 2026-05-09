@@ -1,7 +1,5 @@
 """
 Tests del Simulador de Acceso Concurrente
-Ejecutar con:
-    python dbms/structures/test_concurrency.py
 """
 
 import os
@@ -10,9 +8,9 @@ import shutil
 import threading
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from dbms.structures.concurrency import (
+from src.concurrency.concurrency import (
     PageLockManager, TransactionLog, ConcurrentBPlusTree,
     Transaction, LockType, DeadlockError, LockTimeoutError,
 )
@@ -47,7 +45,7 @@ def cleanup():
 
 
 def make_tree(**kwargs):
-    """Crea un ConcurrentBPlusTree con lock manager y log."""
+    """Crea un ConcurrentBPlusTree con lock manager y log"""
     lm = PageLockManager(timeout=2.0)
     tlog = TransactionLog()
     tree = ConcurrentBPlusTree("conc_test.idx", lm, tlog,
@@ -355,18 +353,16 @@ def test_read_write_conflict():
     def reader_tx():
         tx = Transaction(tree, lm, tlog)
         try:
-            # Lee primero
             results["reader"].append(tx.search(5))
-            sync.set()  # Indicar al writer que ya leimos
-            time.sleep(0.2)  # Simular trabajo
-            # Lee de nuevo (deberia ser consistente en 2PL)
+            sync.set()
+            time.sleep(0.2)
             results["reader"].append(tx.search(5))
             tx.commit()
         except (DeadlockError, LockTimeoutError):
             tx.abort()
 
     def writer_tx():
-        sync.wait(timeout=3.0)  # Esperar a que reader lea primero
+        sync.wait(timeout=3.0)
         tx = Transaction(tree, lm, tlog)
         try:
             tx.remove(5)
@@ -499,7 +495,6 @@ def test_stress():
     Transaction.reset_counter()
 
     tree, lm, tlog = make_tree()
-    # Menor timeout para no bloquear demasiado
     lm.timeout = 3.0
 
     for i in range(100):
@@ -557,7 +552,7 @@ def test_stress():
 # ================================================================== #
 
 def test_conflict_analysis():
-    header("TEST 12: Conflict analysis del log")
+    header("TEST 12: Conflict analysis del log + reporte a disco")
     cleanup()
     Transaction.reset_counter()
 
@@ -617,6 +612,11 @@ def test_conflict_analysis():
                   f"entre TX {c['transactions']}")
     else:
         print("  Sin conflictos (las TX no accedieron a mismas paginas)")
+
+    # Guardar reporte a disco
+    report_path = os.path.join("logs", "concurrency_report.txt")
+    tlog.save_report(report_path)
+    check(f"Reporte guardado en {report_path}", os.path.isfile(report_path))
 
     check("Analisis completo", True)
     cleanup()

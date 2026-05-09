@@ -2,8 +2,8 @@ import threading
 import time
 from enum import Enum
 
-from dbms.structures.bplus import BPlusTree
-from dbms.utils.pagemanager import PageManager
+from src.structures.bplus import BPlusTree
+from src.storage.pagemanager import PageManager
 
 
 # ===================================================================== #
@@ -224,8 +224,6 @@ class TransactionLog:
     def find_conflicts(self):
         """
         Analiza el log para identificar conflictos potenciales.
-        Un conflicto ocurre cuando dos TX acceden a la misma pagina
-        y al menos uno es de escritura.
         """
         # Agrupar accesos por pagina
         page_accesses = {}
@@ -247,6 +245,154 @@ class TransactionLog:
                 })
         return conflicts
 
+    def save_report(self, filepath):
+        """
+        Reporte: protocolo usado, timeline, locks, conflictos y resolucion.
+        """
+        import os
+        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+
+        lines = []
+        sep = "=" * 72
+
+        # ── Header ──
+        lines.append(sep)
+        lines.append("  REPORTE DE CONCURRENCIA")
+        lines.append(sep)
+        lines.append("")
+
+        # ── Protocolo ──
+        lines.append("PROTOCOLO: Strict Two-Phase Locking (S2PL)")
+        lines.append("-" * 72)
+        lines.append("  Granularidad:  Bloqueos a nivel de pagina")
+        lines.append("  Lock tipos:    SHARED (S) — lectura, multiples TX simultaneas")
+        lines.append("                 EXCLUSIVE (X) — escritura, exclusion mutua")
+        lines.append("  Upgrade:       S -> X permitido si TX es unico holder")
+        lines.append("  Liberacion:    Solo en COMMIT o ABORT (strict 2PL)")
+        lines.append("  Deadlock:      Deteccion via grafo wait-for (BFS)")
+        lines.append("  Resolucion:    TX victima recibe DeadlockError y hace ABORT")
+        lines.append("")
+
+        # ── Resumen de transacciones ──
+        tx_ops = {}
+        for e in self.entries:
+            tx_ops.setdefault(e["tx_id"], []).append(e)
+
+        lines.append("TRANSACCIONES")
+        lines.append("-" * 72)
+        lines.append(f"  Total: {len(tx_ops)} transacciones")
+        lines.append("")
+
+        for tx_id in sorted(tx_ops):
+            ops = tx_ops[tx_id]
+            op_types = [e["op"] for e in ops]
+            status = "COMMIT" if "COMMIT" in op_types else "ABORT" if "ABORT" in op_types else "ACTIVA"
+            n_locks_s = op_types.count("LOCK_S")
+            n_locks_x = op_types.count("LOCK_X")
+            n_reads = op_types.count("READ")
+            n_writes = op_types.count("WRITE")
+
+            t0 = time.strftime("%H:%M:%S", time.localtime(ops[0]["time"]))
+            ms0 = f".{int(ops[0]['time'] * 1000) % 1000:03d}"
+            tf = time.strftime("%H:%M:%S", time.localtime(ops[-1]["time"]))
+            msf = f".{int(ops[-1]['time'] * 1000) % 1000:03d}"
+            duration_ms = (ops[-1]["time"] - ops[0]["time"]) * 1000
+
+            lines.append(f"  TX{tx_id} [{status}]")
+            lines.append(f"    Inicio: {t0}{ms0}  Fin: {tf}{msf}  Duracion: {duration_ms:.1f} ms")
+            lines.append(f"    Locks: {n_locks_s} S + {n_locks_x} X  |  I/O: {n_reads} reads + {n_writes} writes")
+
+            # Errores/deadlocks
+            errors = [e for e in ops if e["op"] == "ERROR"]
+            for err in errors:
+                lines.append(f"    ERROR: {err['detail']}")
+
+            # Secuencia de operaciones de alto nivel
+            high_level = [e for e in ops if e["op"] in
+                          ("BEGIN", "SEARCH", "INSERT", "DELETE",
+                           "RANGE_SEARCH", "COMMIT", "ABORT", "ERROR")]
+            seq = " -> ".join(e["op"] + (f"({e['detail']})" if e['detail'] else "")
+                              for e in high_level)
+            lines.append(f"    Flujo: {seq}")
+            lines.append("")
+
+        # ── Locks adquiridos por pagina ──
+        page_locks = {}
+        for e in self.entries:
+            if e["op"] in ("LOCK_S", "LOCK_X") and "page=" in e["detail"]:
+                pid = int(e["detail"].split("page=")[1])
+                lock_type = "S" if e["op"] == "LOCK_S" else "X"
+                page_locks.setdefault(pid, []).append({
+                    "tx_id": e["tx_id"],
+                    "type": lock_type,
+                    "time": e["time"],
+                })
+
+        lines.append("LOCKS POR PAGINA")
+        lines.append("-" * 72)
+        for pid in sorted(page_locks):
+            holders = page_locks[pid]
+            tx_set = set(h["tx_id"] for h in holders)
+            types = set(h["type"] for h in holders)
+            contention = "CONTENTION" if len(tx_set) > 1 and "X" in types else ""
+            lines.append(f"  Page {pid}: {len(holders)} locks ({', '.join(types)}) "
+                         f"por TX {sorted(tx_set)} {contention}")
+        lines.append("")
+
+        # ── Conflictos ──
+        conflicts = self.find_conflicts()
+        lines.append("CONFLICTOS DETECTADOS")
+        lines.append("-" * 72)
+        if not conflicts:
+            lines.append("  Ninguno — las transacciones no accedieron a las mismas paginas")
+            lines.append("  con operaciones incompatibles.")
+        else:
+            lines.append(f"  Total: {len(conflicts)} conflictos")
+            lines.append("")
+            rw = [c for c in conflicts if c["type"] == "R-W"]
+            ww = [c for c in conflicts if c["type"] == "W-W"]
+            if rw:
+                lines.append(f"  Read-Write (R-W): {len(rw)}")
+                for c in rw:
+                    lines.append(f"    Page {c['page']}: TX {sorted(c['transactions'])}")
+            if ww:
+                lines.append(f"  Write-Write (W-W): {len(ww)}")
+                for c in ww:
+                    lines.append(f"    Page {c['page']}: TX {sorted(c['transactions'])}")
+            lines.append("")
+            lines.append("  Resolucion: Strict 2PL garantiza serializabilidad.")
+            lines.append("  Las TX esperan por locks compatibles. Si se detecta un")
+            lines.append("  ciclo en el grafo wait-for, la TX victima hace ABORT")
+            lines.append("  y libera todos sus locks (wound-wait simplificado).")
+        lines.append("")
+
+        # ── Deadlocks y aborts ──
+        deadlocks = [e for e in self.entries if e["op"] == "ERROR" and "deadlock" in e["detail"].lower()]
+        aborts = [e for e in self.entries if e["op"] == "ABORT"]
+        lines.append("DEADLOCKS Y ABORTS")
+        lines.append("-" * 72)
+        lines.append(f"  Deadlocks detectados: {len(deadlocks)}")
+        lines.append(f"  Transacciones abortadas: {len(aborts)}")
+        if deadlocks:
+            for d in deadlocks:
+                t = time.strftime("%H:%M:%S", time.localtime(d["time"]))
+                lines.append(f"    TX{d['tx_id']} @ {t}: {d['detail']}")
+        lines.append("")
+
+        # ── Timeline completo ──
+        lines.append("TIMELINE COMPLETO")
+        lines.append("-" * 72)
+        for e in self.entries:
+            t = time.strftime("%H:%M:%S", time.localtime(e["time"]))
+            ms = f".{int(e['time'] * 1000) % 1000:03d}"
+            lines.append(f"  [{t}{ms}] TX{e['tx_id']:>2}  {e['op']:<15} {e['detail']}")
+
+        lines.append("")
+        lines.append(sep)
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
 
 # ===================================================================== #
 #  CONCURRENT PAGE MANAGER                                                #
@@ -255,10 +401,6 @@ class TransactionLog:
 class ConcurrentPageManager(PageManager):
     """
     PageManager con soporte de concurrencia.
-    Envuelve read_page/write_page con:
-      - Adquisicion automatica de locks (S para lectura, X para escritura).
-      - Serializacion de I/O via _io_lock (seguridad entre hilos en disco).
-      - Registro de operaciones al TransactionLog.
     """
 
     def __init__(self, filepath, page_size, lock_manager, tx_log, get_tx):
@@ -301,8 +443,6 @@ class ConcurrentPageManager(PageManager):
 class ConcurrentBPlusTree(BPlusTree):
     """
     B+ Tree con soporte de concurrencia.
-    Inyecta un ConcurrentPageManager que adquiere locks
-    automaticamente segun el tx_id del hilo actual.
     """
 
     def __init__(self, index_file, lock_manager, tx_log, **kwargs):
@@ -312,7 +452,6 @@ class ConcurrentBPlusTree(BPlusTree):
         self._local = threading.local()
         self._meta_lock = threading.Lock()
 
-        # Construir ruta igual que BPlusTree
         index_dir = os.path.join(
             os.path.dirname(os.path.abspath(index_file)), "indexes")
         os.makedirs(index_dir, exist_ok=True)
