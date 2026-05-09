@@ -14,7 +14,7 @@ import math
 import struct
 import heapq
 
-from dbms.utils.pagemanager import PageManager
+from src.storage.pagemanager import PageManager
 
 
 class RTree:
@@ -65,10 +65,8 @@ class RTree:
         else:
             self._init_file()
 
-    # ------------------------------------------------------------------ #
-    #  DISK I/O STATS (delegados a PageManager)                            #
-    # ------------------------------------------------------------------ #
 
+    #  DISK I/O STATS (delegados a PageManager)                           
     @property
     def disk_reads(self):
         return self.pm.disk_reads
@@ -88,10 +86,8 @@ class RTree:
     def reset_stats(self):
         self.pm.reset_stats()
 
-    # ------------------------------------------------------------------ #
-    #  ACCESO A DISCO                                                      #
-    # ------------------------------------------------------------------ #
 
+    #  ACCESO A DISCO                                                     
     def _init_file(self):
         page = bytearray(self.page_size)
         struct.pack_into(self.META_FMT, page, 0, -1, 1)
@@ -111,10 +107,7 @@ class RTree:
         self.num_pages += 1
         return pid
 
-    # ------------------------------------------------------------------ #
-    #  SERIALIZACION DE NODOS                                              #
-    # ------------------------------------------------------------------ #
-
+    #  SERIALIZACION DE NODOS                                              
     def _read_node(self, page_id):
         data = self.pm.read_page(page_id)
         is_leaf, num_entries = struct.unpack_from(self.HEADER_FMT, data, 0)
@@ -161,10 +154,7 @@ class RTree:
 
         self.pm.write_page(page_id, page)
 
-    # ------------------------------------------------------------------ #
-    #  MBR HELPERS                                                         #
-    # ------------------------------------------------------------------ #
-
+    #  MBR HELPERS                                                        
     @staticmethod
     def _point_mbr(x, y):
         return (x, y, x, y)
@@ -226,10 +216,7 @@ class RTree:
         else:
             return entry["mbr"]
 
-    # ------------------------------------------------------------------ #
-    #  INSERT                                                              #
-    # ------------------------------------------------------------------ #
-
+    #  INSERT                                                             
     def add(self, x, y, rid):
         entry = {"x": float(x), "y": float(y), "rid": tuple(rid)}
         point_mbr = self._point_mbr(entry["x"], entry["y"])
@@ -280,10 +267,8 @@ class RTree:
 
         return node, path
 
-    # ------------------------------------------------------------------ #
-    #  SPLIT (Quadratic)                                                   #
-    # ------------------------------------------------------------------ #
 
+    #  SPLIT (Quadratic)                                                  
     def _split_node(self, node):
         entries = node["entries"]
         is_leaf = node["is_leaf"]
@@ -362,10 +347,8 @@ class RTree:
 
         return seed1, seed2
 
-    # ------------------------------------------------------------------ #
-    #  ADJUST TREE                                                         #
-    # ------------------------------------------------------------------ #
 
+    #  ADJUST TREE                                                         
     def _adjust_tree(self, path, node):
         mbr = self._compute_mbr(node)
         for parent, idx in reversed(path):
@@ -413,10 +396,8 @@ class RTree:
         self._write_node(new_root_pid, new_root)
         self.root_page = new_root_pid
 
-    # ------------------------------------------------------------------ #
-    #  BUSQUEDA: Circular (radio)                                          #
-    # ------------------------------------------------------------------ #
 
+    #  BUSQUEDA: Circular (radio)                                          
     def radius_search(self, cx, cy, radius, limit=0, offset=0):
         if self.root_page == -1:
             return []
@@ -447,10 +428,8 @@ class RTree:
 
         return results
 
-    # ------------------------------------------------------------------ #
-    #  BUSQUEDA: k-NN (k vecinos mas cercanos)                             #
-    # ------------------------------------------------------------------ #
 
+    #  BUSQUEDA: k-NN (k vecinos mas cercanos)                             
     def knn_search(self, qx, qy, k, limit=0, offset=0):
         if self.root_page == -1 or k <= 0:
             return []
@@ -490,10 +469,7 @@ class RTree:
 
         return results
 
-    # ------------------------------------------------------------------ #
-    #  BUSQUEDA: Punto exacto                                              #
-    # ------------------------------------------------------------------ #
-
+    #  BUSQUEDA: Punto exacto                                              
     def search(self, x, y):
         if self.root_page == -1:
             return None
@@ -540,10 +516,7 @@ class RTree:
 
         return all_results
 
-    # ------------------------------------------------------------------ #
-    #  DELETE                                                              #
-    # ------------------------------------------------------------------ #
-
+    #  DELETE                                                             
     def remove(self, x, y, rid=None):
         x, y = float(x), float(y)
         if self.root_page == -1:
@@ -624,10 +597,7 @@ class RTree:
                 entries.extend(self._collect_leaf_entries(child))
         return entries
 
-    # ------------------------------------------------------------------ #
-    #  JSON RESPONSE (para frontend)                                       #
-    # ------------------------------------------------------------------ #
-
+    #  JSON RESPONSE                                                   
     def radius_search_json(self, cx, cy, radius, limit=0, offset=0):
         results = self.radius_search(cx, cy, radius, limit=limit, offset=offset)
         return self._format_json(cx, cy, results)
@@ -656,10 +626,8 @@ class RTree:
             "total": len(results),
         }
 
-    # ------------------------------------------------------------------ #
-    #  DEBUG                                                               #
-    # ------------------------------------------------------------------ #
-
+ 
+    #  DEBUG                                                               
     def print_tree(self):
         if self.root_page == -1:
             print("(arbol vacio)")
