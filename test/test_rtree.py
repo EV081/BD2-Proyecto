@@ -1,9 +1,3 @@
-"""
-Tests del R-Tree: Indice Espacial 2D
-Ejecutar con:
-    python dbms/structures/test_rtree.py
-"""
-
 import os
 import sys
 import math
@@ -11,9 +5,9 @@ import shutil
 import random
 import json
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from dbms.structures.rtree import RTree
+from src.structures.rtree import RTree
 
 
 PASSED = 0
