@@ -1,1 +1,0 @@
-SELECT * FROM Estudiantes WHERE nota BETWEEN 11 AND 20;

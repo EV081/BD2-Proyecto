@@ -4,8 +4,9 @@ Patrón Visitor para el parser SQL
 Estructura
 
   Visitor (ABC)           -> interfaz base
-  PrintVisitor(Visitor)   -> imprime el SQL reconstruido
-  ExecuteVisitor(Visitor) -> gatilla la ejecucion en la BD
+  TraceVisitor(Visitor)   -> imprime SQL + descripcion de operaciones (debug/testing)
+
+DBVisitor (en db_visitor.py) es el visitor que ejecuta contra la BD.
 """
 
 from abc import ABC, abstractmethod
@@ -56,55 +57,90 @@ class Visitor(ABC):
 
 
 # ---------------------------------------------------------------------------
-# PrintVisitor — muestra la sentencia SQL original
+# TraceVisitor — traza de debug: SQL reconstruido + descripcion de operacion
 # ---------------------------------------------------------------------------
 
-class PrintVisitor(Visitor):
+class TraceVisitor(Visitor):
+    """Imprime el SQL original y la descripcion de la operacion.
+
+    Util para debugging y testing: muestra que se va a ejecutar
+    sin tocar la base de datos.
+    """
 
     def visit_create_table(self, node: CreateTableStmt):
+        # SQL
         cols = []
         for c in node.columns:
             part = f"{c.name} {c.data_type}"
+            if c.is_primary_key:
+                part += " PRIMARY KEY"
             if c.index:
                 part += f" INDEX {c.index}"
             cols.append(part)
         stmt = f"CREATE TABLE {node.name} ({', '.join(cols)})"
         if node.file_path:
             stmt += f" FROM FILE \"{node.file_path}\""
-        print(stmt)
+        print(f"[SQL]  {stmt}")
+
+        # Traza
+        cols_info = ", ".join(
+            f"{c.name}:{c.data_type}"
+            + (" PK" if c.is_primary_key else "")
+            + (f"[{c.index}]" if c.index else "")
+            for c in node.columns
+        )
+        file_info = f", cargando desde '{node.file_path}'" if node.file_path else ""
+        print(f"[EXEC] Crear tabla '{node.name}' con columnas [{cols_info}]{file_info}")
 
     def visit_select(self, node: SelectStmt):
         cols = ", ".join(node.columns)
+        # SQL
         stmt = f"SELECT {cols} FROM {node.table}"
         if node.where is not None:
-            stmt += f" WHERE {self._fmt_cond(node.where)}"
-        print(stmt)
+            stmt += f" WHERE {self._fmt_sql(node.where)}"
+        print(f"[SQL]  {stmt}")
+
+        # Traza
+        if node.where is None:
+            print(f"[EXEC] Buscar todos los registros de '{node.table}' -> columnas [{cols}]")
+        else:
+            print(f"[EXEC] Buscar en '{node.table}' con condicion [{self._fmt_desc(node.where)}] -> columnas [{cols}]")
 
     def visit_insert(self, node: InsertStmt):
         def fmt_val(v):
             if isinstance(v, str):
                 return f'"{v}"'
             return str(v)
-        vals = ", ".join(fmt_val(v) for v in node.values)
-        print(f"INSERT INTO {node.table} VALUES ({vals})")
+        vals_sql = ", ".join(fmt_val(v) for v in node.values)
+        vals_desc = ", ".join(repr(v) for v in node.values)
+        print(f"[SQL]  INSERT INTO {node.table} VALUES ({vals_sql})")
+        print(f"[EXEC] Insertar en '{node.table}' los valores ({vals_desc})")
 
     def visit_delete(self, node: DeleteStmt):
-        print(f"DELETE FROM {node.table} WHERE {self._fmt_cond(node.where)}")
+        print(f"[SQL]  DELETE FROM {node.table} WHERE {self._fmt_sql(node.where)}")
+        print(f"[EXEC] Eliminar de '{node.table}' donde {self._fmt_desc(node.where)}")
 
     def visit_comparison_cond(self, node: ComparisonCond):
-        print(f"{node.left} {node.operator} {node.right}")
+        print(f"[SQL]  {node.left} {node.operator} {node.right}")
+        print(f"[EXEC] Condicion: {node.left} {node.operator} {node.right!r}")
 
     def visit_between_cond(self, node: BetweenCond):
-        print(f"{node.left} BETWEEN {node.lower} AND {node.upper}")
+        print(f"[SQL]  {node.left} BETWEEN {node.lower} AND {node.upper}")
+        print(f"[EXEC] Condicion: {node.left} entre {node.lower!r} y {node.upper!r}")
 
     def visit_spatial_point_cond(self, node: SpatialPointCond):
-        print(f"POINT({node.x}, {node.y}), {node.search_type.upper()} {node.search_value}")
+        print(f"[SQL]  POINT({node.x}, {node.y}), {node.search_type.upper()} {node.search_value}")
+        print(f"[EXEC] Condicion espacial: POINT({node.x}, {node.y}) {node.search_type.upper()} {node.search_value}")
 
     def visit_in_spatial_cond(self, node: InSpatialCond):
         sp = node.spatial_condition
-        print(f"{node.left} IN (POINT({sp.x}, {sp.y}), {sp.search_type.upper()} {sp.search_value})")
+        print(f"[SQL]  {node.left} IN (POINT({sp.x}, {sp.y}), {sp.search_type.upper()} {sp.search_value})")
+        print(f"[EXEC] Condicion espacial: {node.left} IN POINT({sp.x}, {sp.y}) {sp.search_type.upper()} {sp.search_value}")
 
-    def _fmt_cond(self, cond) -> str:
+    # --- helpers ---
+
+    def _fmt_sql(self, cond) -> str:
+        """Formatea condicion como SQL."""
         if isinstance(cond, ComparisonCond):
             return f"{cond.left} {cond.operator} {cond.right}"
         if isinstance(cond, BetweenCond):
@@ -115,51 +151,8 @@ class PrintVisitor(Visitor):
                     f" {sp.search_type.upper()} {sp.search_value})")
         return str(cond)
 
-
-# ---------------------------------------------------------------------------
-# ExecuteVisitor — stub de ejecución
-# ---------------------------------------------------------------------------
-
-class ExecuteVisitor(Visitor):
-
-    def visit_create_table(self, node: CreateTableStmt):
-        cols_info = ", ".join(
-            f"{c.name}:{c.data_type}" + (f"[{c.index}]" if c.index else "")
-            for c in node.columns
-        )
-        file_info = f", cargando desde '{node.file_path}'" if node.file_path else ""
-        print(f"Crear tabla '{node.name}' con columnas [{cols_info}]{file_info}")
-
-    def visit_select(self, node: SelectStmt):
-        cols = ", ".join(node.columns)
-        if node.where is None:
-            print(f"Buscar todos los registros de '{node.table}' -> columnas [{cols}]")
-        else:
-            print(f"Buscar en '{node.table}' con condicion [{self._fmt_exec_cond(node.where)}] -> columnas [{cols}]")
-
-    def visit_insert(self, node: InsertStmt):
-        vals = ", ".join(repr(v) for v in node.values)
-        print(f"Insertar en '{node.table}' los valores ({vals})")
-
-    def visit_delete(self, node: DeleteStmt):
-        print(f"Eliminar de '{node.table}' donde {self._fmt_exec_cond(node.where)}")
-
-    # --- condiciones (para dispatch directo) ---
-
-    def visit_comparison_cond(self, node: ComparisonCond):
-        print(f"  Condicion: {node.left} {node.operator} {node.right!r}")
-
-    def visit_between_cond(self, node: BetweenCond):
-        print(f"  Condicion: {node.left} entre {node.lower!r} y {node.upper!r}")
-
-    def visit_spatial_point_cond(self, node: SpatialPointCond):
-        print(f"  Condicion espacial: POINT({node.x}, {node.y}) {node.search_type.upper()} {node.search_value}")
-
-    def visit_in_spatial_cond(self, node: InSpatialCond):
-        sp = node.spatial_condition
-        print(f"  Condicion espacial: {node.left} IN POINT({sp.x}, {sp.y}) {sp.search_type.upper()} {sp.search_value}")
-
-    def _fmt_exec_cond(self, cond) -> str:
+    def _fmt_desc(self, cond) -> str:
+        """Formatea condicion como descripcion legible."""
         if isinstance(cond, ComparisonCond):
             return f"{cond.left} {cond.operator} {cond.right!r}"
         if isinstance(cond, BetweenCond):

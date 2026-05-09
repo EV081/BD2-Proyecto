@@ -1,11 +1,54 @@
 === STDOUT ===
-Codigo:
-CREATE TABLE Estudiantes (id INT INDEX BTREE, nombre VARCHAR, nota FLOAT) FROM FILE "data/alumnos.csv"
+Traza:
+[SQL]  CREATE TABLE Estudiantes (id INT PRIMARY KEY, nombre VARCHAR(30), nota FLOAT)
+[EXEC] Crear tabla 'Estudiantes' con columnas [id:INT PK, nombre:VARCHAR(30), nota:FLOAT]
+[SQL]  INSERT INTO Estudiantes VALUES (1, "Ana", 18.5)
+[EXEC] Insertar en 'Estudiantes' los valores (1, 'Ana', 18.5)
+[SQL]  INSERT INTO Estudiantes VALUES (2, "Carlos", 12.0)
+[EXEC] Insertar en 'Estudiantes' los valores (2, 'Carlos', 12.0)
+[SQL]  INSERT INTO Estudiantes VALUES (3, "Beatriz", 20.0)
+[EXEC] Insertar en 'Estudiantes' los valores (3, 'Beatriz', 20.0)
+[SQL]  INSERT INTO Estudiantes VALUES (4, "David", 15.5)
+[EXEC] Insertar en 'Estudiantes' los valores (4, 'David', 15.5)
+[SQL]  INSERT INTO Estudiantes VALUES (5, "Elena", 9.0)
+[EXEC] Insertar en 'Estudiantes' los valores (5, 'Elena', 9.0)
+[SQL]  SELECT * FROM Estudiantes
+[EXEC] Buscar todos los registros de 'Estudiantes' -> columnas [*]
+[SQL]  SELECT * FROM Estudiantes WHERE nota BETWEEN 11 AND 20
+[EXEC] Buscar en 'Estudiantes' con condicion [nota BETWEEN 11 AND 20] -> columnas [*]
 
 Ejecucion:
-Crear tabla 'Estudiantes' con columnas [id:INT[BTREE], nombre:VARCHAR, nota:FLOAT], cargando desde 'data/alumnos.csv'
+Tabla 'Estudiantes' creada (id INT PRIMARY KEY, nombre VARCHAR(30), nota FLOAT)
+Insertado en 'Estudiantes': (1, 'Ana', 18.5) -> RID (0, 0)
+  Metricas: 0.130 ms | Reads: 1 (heap=1, idx=0) | Writes: 4 (heap=2, idx=2)
+Insertado en 'Estudiantes': (2, 'Carlos', 12.0) -> RID (0, 1)
+  Metricas: 0.100 ms | Reads: 2 (heap=1, idx=1) | Writes: 3 (heap=1, idx=2)
+Insertado en 'Estudiantes': (3, 'Beatriz', 20.0) -> RID (0, 2)
+  Metricas: 0.088 ms | Reads: 2 (heap=1, idx=1) | Writes: 3 (heap=1, idx=2)
+Insertado en 'Estudiantes': (4, 'David', 15.5) -> RID (0, 3)
+  Metricas: 0.083 ms | Reads: 2 (heap=1, idx=1) | Writes: 3 (heap=1, idx=2)
+Insertado en 'Estudiantes': (5, 'Elena', 9.0) -> RID (0, 4)
+  Metricas: 0.080 ms | Reads: 2 (heap=1, idx=1) | Writes: 3 (heap=1, idx=2)
+  [TPMMS - Fase 1] reads=1 | writes=1 | time=0.0s
+  [TPMMS - Fase 2] reads=1 | writes=1 | time=0.0s
+  [TPMMS - Total]  runs=1 | io_total=4 | time=0.0001s
+Resultados (5 registros):
+  ['id', 'nombre', 'nota']
+  (5, 'Elena', 9.0)
+  (2, 'Carlos', 12.0)
+  (4, 'David', 15.5)
+  (1, 'Ana', 18.5)
+  (3, 'Beatriz', 20.0)
+  Metricas: 0.478 ms | Reads: 101 (heap=101, idx=0) | Writes: 2 (heap=2, idx=0)
+Resultados (4 registros):
+  ['id', 'nombre', 'nota']
+  (1, 'Ana', 18.5)
+  (2, 'Carlos', 12.0)
+  (3, 'Beatriz', 20.0)
+  (4, 'David', 15.5)
+  Metricas: 0.372 ms | Reads: 99 (heap=99, idx=0) | Writes: 0 (heap=0, idx=0)
 
 Parser exitoso
-AST guardado en: outputs/ast_1.json
+AST guardado en: /home/vssz/UTEC/5to/bd2/BD2-Proyecto-1/src/parser/outputs/ast_1.json
 
 === STDERR ===

@@ -1,1 +1,8 @@
-CREATE TABLE Estudiantes (id INT INDEX BTREE, nombre VARCHAR, nota FLOAT) FROM FILE "data/alumnos.csv";
+CREATE TABLE Estudiantes (id INT PRIMARY KEY, nombre VARCHAR(30), nota FLOAT);
+INSERT INTO Estudiantes VALUES (1, 'Ana', 18.5);
+INSERT INTO Estudiantes VALUES (2, 'Carlos', 12.0);
+INSERT INTO Estudiantes VALUES (3, 'Beatriz', 20.0);
+INSERT INTO Estudiantes VALUES (4, 'David', 15.5);
+INSERT INTO Estudiantes VALUES (5, 'Elena', 9.0);
+SELECT * FROM Estudiantes ORDER BY nota;
+SELECT * FROM Estudiantes WHERE nota BETWEEN 11 AND 20

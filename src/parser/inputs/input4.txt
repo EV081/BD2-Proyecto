@@ -1,2 +1,0 @@
-SELECT * FROM Estudiantes WHERE id = 105;
-SELECT * FROM Estudiantes WHERE id > 105;

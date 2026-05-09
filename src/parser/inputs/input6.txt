@@ -1,1 +1,0 @@
-SELECT * FROM Locales WHERE ubicacion IN (POINT(-12.04, -77.02), RADIUS 500);

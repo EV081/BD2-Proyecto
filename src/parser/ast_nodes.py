@@ -1,10 +1,9 @@
 """
-ast.py — Nodos del AST para el parser SQL del proyecto BD2.
+ast.py — Nodos del AST para el parser SQL
 
 Cada clase corresponde a una producción de la gramática EBNF y expone:
   - accept(visitor) : delega en el método visit_* correspondiente del visitor
   - to_dict()       : devuelve el mismo dict que producía el parser original
-                      (permite seguir generando el JSON de salida sin cambios)
 """
 
 from __future__ import annotations
@@ -99,18 +98,23 @@ class InSpatialCond:
 # ---------------------------------------------------------------------------
 
 class ColDef:
-    """Id Type [ INDEX IndexTech ]"""
-    def __init__(self, name: str, data_type: str, index: str | None):
+    """Id Type [ PRIMARY KEY ] [ INDEX IndexTech ]"""
+    def __init__(self, name: str, data_type: str, index: str | None,
+                 is_primary_key: bool = False):
         self.name = name
         self.data_type = data_type
         self.index = index          # None si no tiene índice
+        self.is_primary_key = is_primary_key
 
     def to_dict(self):
-        return {
+        d = {
             "name": self.name,
             "data_type": self.data_type,
             "index": self.index,
         }
+        if self.is_primary_key:
+            d["primary_key"] = True
+        return d
 
 
 # ---------------------------------------------------------------------------

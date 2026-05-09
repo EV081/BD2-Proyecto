@@ -2,23 +2,23 @@
 DBVisitor — Ejecuta sentencias SQL sobre el motor de base de datos (dbengine).
 
 Conecta el parser SQL con el DBMS:
-  CREATE TABLE  → DataBase(...) + create_index(...)
-  SELECT        → select / select_range / select_radius / select_knn
-  INSERT        → insert
-  DELETE        → delete
+  CREATE TABLE  -> DataBase(...) + create_index(...)
+  SELECT        -> select / select_range / select_radius / select_knn
+  INSERT        -> insert
+  DELETE        -> delete
 """
 
 import os
 import csv
 import time
 
-from dbms.dbengine import DataBase
+from src.api.dbengine import DataBase
 from .ast_nodes import (
     CreateTableStmt, SelectStmt, InsertStmt, DeleteStmt,
     ComparisonCond, BetweenCond, SpatialPointCond, InSpatialCond,
 )
 from .visitor import Visitor
-from dbms.utils.external_sort import external_sort
+from src.storage.external_sort import external_sort
 
 # Mapeo de tipos del parser a tipos del dbengine
 TYPE_MAP = {
@@ -41,7 +41,7 @@ def _map_type(parser_type):
     if upper in TYPE_MAP:
         return TYPE_MAP[upper]
     if upper.startswith("VARCHAR"):
-        # VARCHAR(100) → char(100), VARCHAR → char(255)
+        # VARCHAR(100) -> char(100), VARCHAR -> char(255)
         if "(" in parser_type:
             size = parser_type.split("(")[1].split(")")[0]
             return f"char({size})"
@@ -104,8 +104,10 @@ class DBVisitor(Visitor):
 
     def visit_create_table(self, node: CreateTableStmt):
         schema = {}
-        point_cols = {}       # logico → (col_x, col_y)
+        point_cols = {}       # logico -> (col_x, col_y)
         indexes_to_create = []
+        pk_col = None
+        pk_index_type = "bplus"
 
         for col in node.columns:
             if col.data_type.upper() == "POINT":
@@ -127,19 +129,37 @@ class DBVisitor(Visitor):
                 db_type = _map_type(col.data_type)
                 schema[col.name] = db_type
 
-                if col.index:
+                if col.is_primary_key:
+                    # PRIMARY KEY explicito
+                    pk_col = col.name
+                    if col.index:
+                        idx_type = INDEX_MAP.get(col.index.upper(), col.index.lower())
+                        pk_index_type = idx_type
+                    # Sin INDEX -> default bplus
+                elif col.index:
                     idx_type = INDEX_MAP.get(col.index.upper(), col.index.lower())
-                    indexes_to_create.append({
-                        "column": col.name,
-                        "type": idx_type,
-                        "unique": False,
-                    })
+                    if idx_type == "sequential" and pk_col is None:
+                        # Backward compat: INDEX SEQUENTIAL sin PRIMARY KEY -> PK clustered
+                        pk_col = col.name
+                        pk_index_type = "sequential"
+                    else:
+                        indexes_to_create.append({
+                            "column": col.name,
+                            "type": idx_type,
+                            "unique": False,
+                        })
 
-        db = DataBase(node.name, schema=schema)
+        # Detectar PK: la primera columna si no hay PK explicita
+        if pk_col is None:
+            first_col = list(schema.keys())[0]
+            pk_col = first_col
+
+        db = DataBase(node.name, schema=schema, primary_key=pk_col,
+                      pk_index_type=pk_index_type)
         db.point_columns = point_cols
         db._save_schema()
 
-        # Crear indices
+        # Crear indices secundarios
         for idx_info in indexes_to_create:
             db.create_index(idx_info["column"], index_type=idx_info["type"],
                             unique=idx_info["unique"])
@@ -147,7 +167,9 @@ class DBVisitor(Visitor):
         self.tables[node.name] = db
 
         col_info = ", ".join(
-            f"{c.name} {c.data_type}" + (f" INDEX {c.index}" if c.index else "")
+            f"{c.name} {c.data_type}"
+            + (" PRIMARY KEY" if c.is_primary_key else "")
+            + (f" INDEX {c.index}" if c.index else "")
             for c in node.columns
         )
         print(f"Tabla '{node.name}' creada ({col_info})")
@@ -225,6 +247,31 @@ class DBVisitor(Visitor):
     def visit_select(self, node: SelectStmt):
         db = self._get_table(node.table)
 
+        if isinstance(node.where, InSpatialCond):
+            sp = node.where.spatial_condition
+            col_name = node.where.left
+            if col_name in db.point_columns:
+                col_x, col_y = db.point_columns[col_name]
+            else:
+                col_x, col_y = col_name, col_name
+
+            if sp.search_type == "radius":
+                res_json = db.select_radius_json(col_x, col_y, sp.x, sp.y, sp.search_value)
+            elif sp.search_type == "k":
+                res_json = db.select_knn_json(col_x, col_y, sp.x, sp.y, sp.search_value)
+            else:
+                res_json = {"metrics": {"time_ms": 0, "heap_reads": 0, "heap_writes": 0, "index_reads": 0, "index_writes": 0, "total_reads": 0, "total_writes": 0}}
+
+            self.last_metrics = res_json.get("metrics")
+            if self.last_metrics:
+                self._print_metrics(self.last_metrics)
+
+            return {
+                "is_spatial": True,
+                "spatial_data": res_json,
+                "metrics": self.last_metrics
+            }
+
         if node.where is None:
             records, m = db.select_all(metrics=True)
         else:
@@ -262,6 +309,7 @@ class DBVisitor(Visitor):
         return {
             "columns": col_names,
             "rows": records,
+            "metrics": m
         }
 
     class _SelectExecutor:
@@ -350,7 +398,7 @@ class DBVisitor(Visitor):
         self.last_metrics = m
         print(f"Insertado en '{node.table}': {tuple(node.values)} -> RID {rid}")
         self._print_metrics(m)
-        return rid
+        return {"rid": rid, "metrics": m}
 
     # ================================================================ #
     #  DELETE                                                           #
@@ -369,10 +417,10 @@ class DBVisitor(Visitor):
         self.last_metrics = m
         print(f"Eliminados {deleted} registros de '{node.table}' donde {cond.left} = {cond.right!r}")
         self._print_metrics(m)
-        return deleted
+        return {"deleted": deleted, "metrics": m}
 
     # ================================================================ #
-    #  Condition visitors (dispatch directo — no usados en SELECT)      #
+    #  Condition visitors
     # ================================================================ #
 
     def visit_comparison_cond(self, node):

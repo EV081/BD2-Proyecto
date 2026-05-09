@@ -6,11 +6,12 @@
             {
                 "name": "id",
                 "data_type": "INT",
-                "index": "BTREE"
+                "index": null,
+                "primary_key": true
             },
             {
                 "name": "nombre",
-                "data_type": "VARCHAR",
+                "data_type": "VARCHAR(30)",
                 "index": null
             },
             {
@@ -19,6 +20,74 @@
                 "index": null
             }
         ],
-        "file": "data/alumnos.csv"
+        "file": null
+    },
+    {
+        "type": "insert",
+        "table": "Estudiantes",
+        "values": [
+            1,
+            "Ana",
+            18.5
+        ]
+    },
+    {
+        "type": "insert",
+        "table": "Estudiantes",
+        "values": [
+            2,
+            "Carlos",
+            12.0
+        ]
+    },
+    {
+        "type": "insert",
+        "table": "Estudiantes",
+        "values": [
+            3,
+            "Beatriz",
+            20.0
+        ]
+    },
+    {
+        "type": "insert",
+        "table": "Estudiantes",
+        "values": [
+            4,
+            "David",
+            15.5
+        ]
+    },
+    {
+        "type": "insert",
+        "table": "Estudiantes",
+        "values": [
+            5,
+            "Elena",
+            9.0
+        ]
+    },
+    {
+        "type": "select",
+        "columns": [
+            "*"
+        ],
+        "table": "Estudiantes",
+        "where": null,
+        "order_by": "nota"
+    },
+    {
+        "type": "select",
+        "columns": [
+            "*"
+        ],
+        "table": "Estudiantes",
+        "where": {
+            "type": "between",
+            "left": "nota",
+            "lower": 11,
+            "upper": 20
+        },
+        "order_by": null
     }
 ]
