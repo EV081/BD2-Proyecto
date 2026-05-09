@@ -5,12 +5,12 @@ DataBase Manager
 import os
 import time
 
-from dbms.utils.heapfile import HeapFile
-from dbms.utils.schema import SchemaManager
-from dbms.structures.bplus import BPlusTree
-from dbms.structures.rtree import RTree
-from dbms.structures.sequentialfile import SequentialFile
-from dbms.structures.Extendible_Hashing import ExtendibleHash
+from src.storage.heapfile import HeapFile
+from src.storage.schema import SchemaManager
+from src.structures.bplus import BPlusTree
+from src.structures.rtree import RTree
+from src.structures.sequentialfile import SequentialFile
+from src.structures.Extendible_Hashing import ExtendibleHash
 
 
 class DataBase:
@@ -26,13 +26,19 @@ class DataBase:
     # Tipos de indice soportados (extensible para rtree, sequential, hash)
     INDEX_TYPES = {"bplus", "rtree", "sequential", "hash"}
 
-    def __init__(self, table_name, schema=None, primary_key=None):
+    def __init__(self, table_name, schema=None, primary_key=None,
+                 pk_index_type="bplus", max_aux=None):
         self.table_name = table_name
         self.sm = SchemaManager(table_name)
         self.pm = None
         self.schema = None        # {"col": "type", ...}
         self.primary_key = None   # "col_name" o None
         self.record_count = 0
+        self.pk_index_type = pk_index_type
+        self._max_aux = max_aux
+
+        # True cuando el almacenamiento primario es un SequentialFile clustered
+        self.uses_clustered_seq = False
 
         # {column_or_tuple: {"type": "bplus"|"rtree"|..., "index": <instancia>, "unique": bool}}
         self.indexes = {}
@@ -86,24 +92,49 @@ class DataBase:
                 k: tuple(v) for k, v in raw.get("point_columns", {}).items()
             }
 
-            # Crear HeapFile (hereda PageManager para I/O de paginas)
-            record_format = self.build_struct_format(self.schema)
-            self.pm = HeapFile(self.table_name, record_format)
+            # Detectar si la PK usa sequential (clustered)
+            saved_pk_type = raw.get("pk_index_type", "bplus") if isinstance(raw, dict) else "bplus"
+            self.pk_index_type = saved_pk_type
 
-            # Recrear indices desde la metadata guardada
+            record_format = self.build_struct_format(self.schema)
+
+            if saved_pk_type == "sequential" and saved_pk:
+                self.uses_clustered_seq = True
+                key_format = self._col_key_format(saved_pk)
+                key_pos = self._col_index(saved_pk)
+                self.pm = SequentialFile(
+                    f"{self.table_name}_{saved_pk}.idx",
+                    key_format=key_format,
+                    record_format=record_format,
+                    key_position=key_pos,
+                    unique=True,
+                )
+                # Registrar el SF como indice de la PK
+                self.indexes[saved_pk] = {
+                    "type": "sequential",
+                    "index": self.pm,
+                    "unique": True,
+                }
+            else:
+                self.pm = HeapFile(self.table_name, record_format)
+
+            # Recrear indices secundarios desde la metadata guardada
             for idx_meta in indexes_meta:
                 col = idx_meta["column"]
                 if isinstance(col, list):
                     col = tuple(col)
+                # Saltar el indice PK sequential (ya creado arriba como self.pm)
+                if self.uses_clustered_seq and col == self.primary_key:
+                    continue
                 self.create_index(col, index_type=idx_meta["type"],
                                   unique=idx_meta["unique"], _save_meta=False)
 
+            # Configurar callback de reconstruccion
+            if self.uses_clustered_seq:
+                self._setup_reconstruct_callback()
+
             if not isinstance(raw, dict) or "record_count" not in raw:
-                self.record_count = HeapFile.count_records(
-                    self.pm.path,
-                    record_format,
-                    self.PAGE_SIZE,
-                )
+                self.record_count = self._count_all_records(record_format)
                 self._save_schema()
 
         else:
@@ -120,13 +151,43 @@ class DataBase:
             # Guardar en formato nuevo
             self._save_schema()
 
-            # Crear HeapFile (hereda PageManager para I/O de paginas)
             record_format = self.build_struct_format(self.schema)
-            self.pm = HeapFile(self.table_name, record_format)
 
-            # Auto-crear indice unico sobre la primary key
-            if primary_key:
-                self.create_index(primary_key, index_type="bplus", unique=True)
+            if self.pk_index_type == "sequential" and primary_key:
+                self.uses_clustered_seq = True
+                key_format = self._col_key_format(primary_key)
+                key_pos = self._col_index(primary_key)
+                self.pm = SequentialFile(
+                    f"{self.table_name}_{primary_key}.idx",
+                    key_format=key_format,
+                    record_format=record_format,
+                    key_position=key_pos,
+                    unique=True,
+                    max_aux=self._max_aux,
+                )
+                # Registrar como indice PK
+                self.indexes[primary_key] = {
+                    "type": "sequential",
+                    "index": self.pm,
+                    "unique": True,
+                }
+                self._save_schema()
+            else:
+                self.pm = HeapFile(self.table_name, record_format)
+                # Auto-crear indice unico sobre la primary key
+                if primary_key:
+                    self.create_index(primary_key, index_type="bplus", unique=True)
+
+    def _count_all_records(self, record_format):
+        """Cuenta registros activos segun el modo de almacenamiento."""
+        if self.uses_clustered_seq:
+            count = 0
+            for _ in self.pm.iter_all_records():
+                count += 1
+            return count
+        else:
+            return HeapFile.count_records(
+                self.pm.path, record_format, self.PAGE_SIZE)
 
     # ------------------------
     # SCHEMA -> STRUCT
@@ -150,7 +211,7 @@ class DataBase:
         values = list(rec)
         for i, col in enumerate(self.schema):
             if self.schema[col].startswith("char") and isinstance(values[i], bytes):
-                values[i] = values[i].rstrip(b"\x00").decode("utf-8")
+                values[i] = values[i].rstrip(b"\x00").decode("utf-8", errors="replace")
         return tuple(values)
 
     # ================================================================ #
@@ -162,7 +223,10 @@ class DataBase:
         if self.pm:
             self.pm.reset_stats()
         for info in self.indexes.values():
-            info["index"].reset_stats()
+            idx = info["index"]
+            # En modo clustered, self.pm == self.indexes[pk]["index"], no resetear doble
+            if idx is not self.pm:
+                idx.reset_stats()
 
     def _collect_metrics(self, elapsed_ms):
         """Recolecta metricas de I/O de heap + indices + tiempo."""
@@ -173,6 +237,8 @@ class DataBase:
         index_writes = 0
         for info in self.indexes.values():
             idx = info["index"]
+            if idx is self.pm:
+                continue  # Ya contado como heap
             index_reads += idx.disk_reads
             index_writes += idx.disk_writes
 
@@ -204,11 +270,78 @@ class DataBase:
         self.sm.schema = {
             "columns": self.schema,
             "primary_key": self.primary_key,
+            "pk_index_type": self.pk_index_type,
             "indexes": indexes_meta,
             "point_columns": {k: list(v) for k, v in self.point_columns.items()},
             "record_count": self.record_count,
         }
         self.sm.create_schema()
+
+    # ================================================================ #
+    #  RECONSTRUCTION CALLBACK                                          #
+    # ================================================================ #
+
+    def _setup_reconstruct_callback(self):
+        """Configura callback para reconstruir indices secundarios
+        cuando el SequentialFile hace reconstruct."""
+        def on_reconstruct():
+            for idx_key, info in self.indexes.items():
+                if idx_key == self.primary_key:
+                    continue  # Es el propio SequentialFile
+                idx = info["index"]
+                # Recrear el indice: borrar archivo y reinicializar
+                if hasattr(idx, 'index_file') and os.path.exists(idx.index_file):
+                    os.remove(idx.index_file)
+                # Reinicializar
+                if info["type"] == "rtree":
+                    col_x, col_y = idx_key
+                    new_idx = RTree(os.path.basename(idx.index_file))
+                    self._build_rtree_index_from_storage(col_x, col_y, new_idx)
+                    info["index"] = new_idx
+                else:
+                    key_format = self._col_key_format(idx_key)
+                    if info["type"] == "bplus":
+                        new_idx = BPlusTree(os.path.basename(idx.index_file),
+                                            key_format=key_format,
+                                            unique=info["unique"])
+                    elif info["type"] == "hash":
+                        new_idx = ExtendibleHash(os.path.basename(idx.index_file),
+                                                 key_format=key_format,
+                                                 unique=info["unique"])
+                    else:
+                        continue
+                    self._build_index_from_storage(idx_key, new_idx)
+                    info["index"] = new_idx
+
+        self.pm.on_reconstruct = on_reconstruct
+
+    def _build_index_from_storage(self, column, idx):
+        """Construye un indice secundario iterando el almacenamiento primario."""
+        col_pos = self._col_index(column)
+        if self.uses_clustered_seq:
+            for page_id, slot, rec in self.pm.iter_all_records():
+                key = rec[col_pos]
+                idx.add(key, (page_id, slot))
+        else:
+            for p in range(self.pm.num_pages()):
+                for s in range(self.pm.records_per_page()):
+                    rec = self.pm.read_record(p, s)
+                    if rec:
+                        idx.add(rec[col_pos], (p, s))
+
+    def _build_rtree_index_from_storage(self, col_x, col_y, idx):
+        """Construye un R-Tree iterando el almacenamiento primario."""
+        x_pos = self._col_index(col_x)
+        y_pos = self._col_index(col_y)
+        if self.uses_clustered_seq:
+            for page_id, slot, rec in self.pm.iter_all_records():
+                idx.add(float(rec[x_pos]), float(rec[y_pos]), (page_id, slot))
+        else:
+            for p in range(self.pm.num_pages()):
+                for s in range(self.pm.records_per_page()):
+                    rec = self.pm.read_record(p, s)
+                    if rec:
+                        idx.add(float(rec[x_pos]), float(rec[y_pos]), (p, s))
 
     # ================================================================ #
     #  INDICES                                                          #
@@ -229,6 +362,10 @@ class DataBase:
             raise ValueError(f"Tipo de indice '{index_type}' no soportado. "
                              f"Opciones: {self.INDEX_TYPES}")
 
+        # Si es sequential y ya se uso como PK clustered, retornar el existente
+        if index_type == "sequential" and self.uses_clustered_seq and column == self.primary_key:
+            return self.indexes[self.primary_key]["index"]
+
         # ---- R-Tree: indice espacial 2D ----
         if index_type == "rtree":
             if not isinstance(column, (tuple, list)) or len(column) != 2:
@@ -248,7 +385,7 @@ class DataBase:
 
             # Solo reconstruir si es un indice nuevo
             if _save_meta:
-                self._build_rtree_index(col_x, col_y, idx)
+                self._build_rtree_index_from_storage(col_x, col_y, idx)
 
             self.indexes[idx_key] = {
                 "type": "rtree",
@@ -260,7 +397,7 @@ class DataBase:
                 self._save_schema()
             return idx
 
-        # ---- B+Tree y otros indices 1D ----
+        # ---- B+Tree, Sequential (secundario), Hash ----
         if column not in self.schema:
             raise ValueError(f"Columna '{column}' no existe en el schema.")
 
@@ -273,6 +410,7 @@ class DataBase:
         if index_type == "bplus":
             idx = BPlusTree(index_file, key_format=key_format, unique=unique)
         elif index_type == "sequential":
+            # Sequential como indice secundario (no clustered)
             idx = SequentialFile(index_file, key_format=key_format, unique=unique)
         elif index_type == "hash":
             idx = ExtendibleHash(index_file, key_format=key_format, unique=unique)
@@ -281,7 +419,7 @@ class DataBase:
 
         # Solo reconstruir el indice si es nuevo (no cuando se carga desde disco)
         if _save_meta:
-            self._build_index(column, idx)
+            self._build_index_from_storage(column, idx)
 
         self.indexes[column] = {
             "type": index_type,
@@ -291,34 +429,26 @@ class DataBase:
 
         if _save_meta:
             self._save_schema()
+            # Si hay clustered seq, actualizar el callback con el nuevo indice
+            if self.uses_clustered_seq:
+                self._setup_reconstruct_callback()
         return idx
 
+    # Mantener compatibilidad con codigo existente
     def _build_index(self, column, idx):
-        """Recorre el heap y agrega todas las entradas existentes al indice (B+Tree)."""
-        col_pos = self._col_index(column)
-
-        for p in range(self.pm.num_pages()):
-            for s in range(self.pm.records_per_page()):
-                rec = self.pm.read_record(p, s)
-                if rec:
-                    key = rec[col_pos]
-                    idx.add(key, (p, s))
+        self._build_index_from_storage(column, idx)
 
     def _build_rtree_index(self, col_x, col_y, idx):
-        """Recorre el heap y agrega todas las entradas existentes al R-Tree."""
-        x_pos = self._col_index(col_x)
-        y_pos = self._col_index(col_y)
-
-        for p in range(self.pm.num_pages()):
-            for s in range(self.pm.records_per_page()):
-                rec = self.pm.read_record(p, s)
-                if rec:
-                    idx.add(float(rec[x_pos]), float(rec[y_pos]), (p, s))
+        self._build_rtree_index_from_storage(col_x, col_y, idx)
 
     def drop_index(self, column):
         """Elimina un indice. column puede ser str o tuple para rtree."""
         if column not in self.indexes:
             raise ValueError(f"No existe indice sobre '{column}'.")
+
+        # No permitir eliminar el indice PK clustered
+        if self.uses_clustered_seq and column == self.primary_key:
+            raise ValueError("No se puede eliminar el indice PK clustered (es el almacenamiento).")
 
         # Delete index file(s) from disk
         idx = self.indexes[column]["index"]
@@ -349,19 +479,27 @@ class DataBase:
                 val = val.encode("utf-8")
             values.append(val)
 
-        # Insertar en heap
+        # Insertar en almacenamiento primario
         rid = self.pm.add_record(tuple(values))
 
-        # Actualizar todos los indices
-        for idx_key, info in self.indexes.items():
-            if info["type"] == "rtree":
-                col_x, col_y = idx_key
-                info["index"].add(float(record_dict[col_x]), float(record_dict[col_y]), rid)
-            else:
-                key = record_dict[idx_key]
-                if isinstance(key, str):
-                    key = key.encode("utf-8")
-                info["index"].add(key, rid)
+        # Si hubo reconstruccion, los indices secundarios ya fueron rebuild
+        # con TODOS los registros (incluyendo el recien insertado). No agregar doble.
+        skip_secondary = (self.uses_clustered_seq and self.pm._just_reconstructed)
+        if skip_secondary:
+            self.pm._just_reconstructed = False
+        else:
+            # Actualizar indices secundarios (saltar PK si es clustered)
+            for idx_key, info in self.indexes.items():
+                if self.uses_clustered_seq and idx_key == self.primary_key:
+                    continue  # Ya insertado en self.pm
+                if info["type"] == "rtree":
+                    col_x, col_y = idx_key
+                    info["index"].add(float(record_dict[col_x]), float(record_dict[col_y]), rid)
+                else:
+                    key = record_dict[idx_key]
+                    if isinstance(key, str):
+                        key = key.encode("utf-8")
+                    info["index"].add(key, rid)
 
         self.record_count += 1
         self._save_schema()
@@ -382,11 +520,15 @@ class DataBase:
 
         results = []
 
-        for p in range(self.pm.num_pages()):
-            for s in range(self.pm.records_per_page()):
-                rec = self.pm.read_record(p, s)
-                if rec:
-                    results.append(self._clean_record(rec))
+        if self.uses_clustered_seq:
+            for _p, _s, rec in self.pm.iter_all_records():
+                results.append(self._clean_record(rec))
+        else:
+            for p in range(self.pm.num_pages()):
+                for s in range(self.pm.records_per_page()):
+                    rec = self.pm.read_record(p, s)
+                    if rec:
+                        results.append(self._clean_record(rec))
 
         elapsed = (time.perf_counter() - t0) * 1000
         if metrics:
@@ -411,7 +553,11 @@ class DataBase:
             idx = self.indexes[column]["index"]
             unique = self.indexes[column]["unique"]
 
-            if unique:
+            if self.uses_clustered_seq and column == self.primary_key:
+                # Busqueda directa en el SequentialFile clustered
+                rec = idx.search(value_key)
+                results = [self._clean_record(rec)] if rec else []
+            elif unique:
                 rid = idx.search(value_key)
                 if rid is None:
                     results = []
@@ -430,11 +576,16 @@ class DataBase:
             col_pos = self._col_index(column)
             results = []
 
-            for p in range(self.pm.num_pages()):
-                for s in range(self.pm.records_per_page()):
-                    rec = self.pm.read_record(p, s)
-                    if rec and rec[col_pos] == value_key:
+            if self.uses_clustered_seq:
+                for _p, _s, rec in self.pm.iter_all_records():
+                    if rec[col_pos] == value_key:
                         results.append(self._clean_record(rec))
+            else:
+                for p in range(self.pm.num_pages()):
+                    for s in range(self.pm.records_per_page()):
+                        rec = self.pm.read_record(p, s)
+                        if rec and rec[col_pos] == value_key:
+                            results.append(self._clean_record(rec))
 
         elapsed = (time.perf_counter() - t0) * 1000
         if metrics:
@@ -454,25 +605,36 @@ class DataBase:
         if isinstance(end, str):
             end = end.encode("utf-8")
 
-        # Ruta con indice (hash no soporta range, usa full scan)
+        # Ruta con indice
         if column in self.indexes and self.indexes[column]["type"] != "hash":
             idx = self.indexes[column]["index"]
-            rids = idx.range_search(begin, end)
-            results = []
-            for page, slot in rids:
-                rec = self.pm.read_record(page, slot)
-                if rec:
-                    results.append(self._clean_record(rec))
+
+            if self.uses_clustered_seq and column == self.primary_key:
+                # range_search en clustered retorna registros completos
+                records = idx.range_search(begin, end)
+                results = [self._clean_record(r) for r in records]
+            else:
+                rids = idx.range_search(begin, end)
+                results = []
+                for page, slot in rids:
+                    rec = self.pm.read_record(page, slot)
+                    if rec:
+                        results.append(self._clean_record(rec))
         else:
             # Full scan (sin indice o indice hash)
             col_pos = self._col_index(column)
             results = []
 
-            for p in range(self.pm.num_pages()):
-                for s in range(self.pm.records_per_page()):
-                    rec = self.pm.read_record(p, s)
-                    if rec and begin <= rec[col_pos] <= end:
+            if self.uses_clustered_seq:
+                for _p, _s, rec in self.pm.iter_all_records():
+                    if begin <= rec[col_pos] <= end:
                         results.append(self._clean_record(rec))
+            else:
+                for p in range(self.pm.num_pages()):
+                    for s in range(self.pm.records_per_page()):
+                        rec = self.pm.read_record(p, s)
+                        if rec and begin <= rec[col_pos] <= end:
+                            results.append(self._clean_record(rec))
 
         elapsed = (time.perf_counter() - t0) * 1000
         if metrics:
@@ -497,6 +659,24 @@ class DataBase:
         else:
             value_key = value
 
+        deleted = 0
+
+        if self.uses_clustered_seq:
+            deleted = self._delete_clustered(column, value_key)
+        else:
+            deleted = self._delete_heap(column, value_key)
+
+        if deleted:
+            self.record_count = max(0, self.record_count - deleted)
+            self._save_schema()
+
+        elapsed = (time.perf_counter() - t0) * 1000
+        if metrics:
+            return deleted, self._collect_metrics(elapsed)
+        return deleted
+
+    def _delete_heap(self, column, value_key):
+        """Elimina registros del HeapFile (modo no-clustered)."""
         deleted = 0
 
         # Encontrar los RIDs a eliminar
@@ -544,14 +724,114 @@ class DataBase:
 
             deleted += 1
 
-        if deleted:
-            self.record_count = max(0, self.record_count - deleted)
-            self._save_schema()
-
-        elapsed = (time.perf_counter() - t0) * 1000
-        if metrics:
-            return deleted, self._collect_metrics(elapsed)
         return deleted
+
+    def _delete_clustered(self, column, value_key):
+        """Elimina registros del SequentialFile clustered usando soft delete.
+        Los slots no se desplazan, asi que los RIDs de indices secundarios
+        permanecen validos. Se elimina de cada indice secundario individualmente."""
+        deleted = 0
+
+        if column == self.primary_key:
+            # Buscar ubicacion y registro antes de eliminar
+            loc = self.pm._find_location(value_key)
+            if loc == (-1, -1):
+                return 0
+            rec = self.pm.read_record(loc[0], loc[1])
+            if rec is None:
+                return 0
+
+            # Soft delete en el SF
+            self.pm.delete_record(loc[0], loc[1])
+
+            # Eliminar de cada indice secundario individualmente
+            self._remove_from_secondary_indexes(rec, loc)
+            deleted = 1
+
+        elif column in self.indexes:
+            idx = self.indexes[column]["index"]
+            unique = self.indexes[column]["unique"]
+
+            if unique:
+                rid = idx.search(value_key)
+                rids = [rid] if rid else []
+            else:
+                rids = list(idx.search_all(value_key))
+
+            for page, slot in rids:
+                rec = self.pm.read_record(page, slot)
+                if rec is None:
+                    continue
+
+                # Soft delete en el SF
+                self.pm.delete_record(page, slot)
+
+                # Eliminar de cada indice secundario individualmente
+                self._remove_from_secondary_indexes(rec, (page, slot))
+                deleted += 1
+
+        else:
+            # Full scan
+            col_pos = self._col_index(column)
+            to_delete = []
+            for _p, _s, rec in self.pm.iter_all_records():
+                if rec[col_pos] == value_key:
+                    to_delete.append((_p, _s, rec))
+
+            for page, slot, rec in to_delete:
+                self.pm.delete_record(page, slot)
+                self._remove_from_secondary_indexes(rec, (page, slot))
+                deleted += 1
+
+        # NO rebuild: soft delete mantiene slots estables
+        return deleted
+
+    def _remove_from_secondary_indexes(self, rec, rid):
+        """Elimina un registro de todos los indices secundarios por clave+RID."""
+        for idx_key, info in self.indexes.items():
+            if idx_key == self.primary_key:
+                continue
+            if info["type"] == "rtree":
+                col_x, col_y = idx_key
+                x_pos = self._col_index(col_x)
+                y_pos = self._col_index(col_y)
+                info["index"].remove(float(rec[x_pos]), float(rec[y_pos]),
+                                     rid=rid)
+            else:
+                col_pos = self._col_index(idx_key)
+                key = rec[col_pos]
+                info["index"].remove(key, value=rid)
+
+    def _rebuild_secondary_indexes(self):
+        """Reconstruye todos los indices secundarios desde el almacenamiento."""
+        for idx_key, info in self.indexes.items():
+            if idx_key == self.primary_key:
+                continue
+            idx = info["index"]
+            # Borrar y recrear
+            if hasattr(idx, 'index_file') and os.path.exists(idx.index_file):
+                os.remove(idx.index_file)
+            if info["type"] == "rtree":
+                col_x, col_y = idx_key
+                new_idx = RTree(os.path.basename(idx.index_file))
+                self._build_rtree_index_from_storage(col_x, col_y, new_idx)
+                info["index"] = new_idx
+            else:
+                key_format = self._col_key_format(idx_key)
+                if info["type"] == "bplus":
+                    new_idx = BPlusTree(os.path.basename(idx.index_file),
+                                        key_format=key_format,
+                                        unique=info["unique"])
+                elif info["type"] == "hash":
+                    new_idx = ExtendibleHash(os.path.basename(idx.index_file),
+                                             key_format=key_format,
+                                             unique=info["unique"])
+                else:
+                    new_idx = SequentialFile(os.path.basename(idx.index_file),
+                                             key_format=key_format,
+                                             unique=info["unique"])
+                self._build_index_from_storage(idx_key, new_idx)
+                info["index"] = new_idx
 
     # ================================================================ #
     #  SPATIAL QUERIES (R-Tree)                                         #
@@ -634,8 +914,8 @@ class DataBase:
 
 def execute_sql(query, input_path="input.sql", output_dir=None, persist_ast=False):
     """Ejecuta el parser SQL desde la capa de utilidades del dbengine."""
-    from dbms.parser.main import execute_parser
-    from dbms.parser.scanner import Scanner
+    from src.parser.main import execute_parser
+    from src.parser.scanner import Scanner
 
     scanner = Scanner(query)
     return execute_parser(scanner, input_path, output_dir, persist_ast=persist_ast)
