@@ -14,7 +14,7 @@ Cada pagina contiene N registros de tamanio fijo:
 import os
 import struct
 
-from dbms.utils.pagemanager import PageManager
+from src.storage.pagemanager import PageManager
 
 
 class HeapFile(PageManager):
