@@ -1,0 +1,98 @@
+{
+  "bplus": {
+    "1000": {
+      "insert_disk": 5665,
+      "insert_time_ms": 191.0,
+      "insert_disk_per_rec": 5.665,
+      "search_disk_avg": 3.0,
+      "search_time_avg_ms": 0.0655,
+      "range_disk_avg": 6.38,
+      "range_time_avg_ms": 0.0844,
+      "range_is_fullscan": false
+    },
+    "10000": {
+      "insert_disk": 59735,
+      "insert_time_ms": 2278.38,
+      "insert_disk_per_rec": 5.9735,
+      "search_disk_avg": 3.0,
+      "search_time_avg_ms": 0.0828,
+      "range_disk_avg": 37.52,
+      "range_time_avg_ms": 0.2768,
+      "range_is_fullscan": false
+    },
+    "100000": {
+      "insert_disk": 618023,
+      "insert_time_ms": 26712.39,
+      "insert_disk_per_rec": 6.1802,
+      "search_disk_avg": 4.0,
+      "search_time_avg_ms": 0.1274,
+      "range_disk_avg": 340.73,
+      "range_time_avg_ms": 2.1248,
+      "range_is_fullscan": false
+    }
+  },
+  "sequential": {
+    "1000": {
+      "insert_disk": 6578,
+      "insert_time_ms": 146.8,
+      "insert_disk_per_rec": 6.578,
+      "search_disk_avg": 3.17,
+      "search_time_avg_ms": 0.0615,
+      "range_disk_avg": 6.03,
+      "range_time_avg_ms": 0.124,
+      "range_is_fullscan": false
+    },
+    "10000": {
+      "insert_disk": 152687,
+      "insert_time_ms": 3569.41,
+      "insert_disk_per_rec": 15.2687,
+      "search_disk_avg": 6.18,
+      "search_time_avg_ms": 0.1327,
+      "range_disk_avg": 9.68,
+      "range_time_avg_ms": 0.2384,
+      "range_is_fullscan": false
+    },
+    "100000": {
+      "insert_disk": 8153681,
+      "insert_time_ms": 170667.06,
+      "insert_disk_per_rec": 81.5368,
+      "search_disk_avg": 9.24,
+      "search_time_avg_ms": 0.1943,
+      "range_disk_avg": 17.28,
+      "range_time_avg_ms": 0.5833,
+      "range_is_fullscan": false
+    }
+  },
+  "hash": {
+    "1000": {
+      "insert_disk": 5007,
+      "insert_time_ms": 171.34,
+      "insert_disk_per_rec": 5.007,
+      "search_disk_avg": 2.0,
+      "search_time_avg_ms": 0.0608,
+      "range_disk_avg": 1065.0,
+      "range_time_avg_ms": 4.5302,
+      "range_is_fullscan": true
+    },
+    "10000": {
+      "insert_disk": 50091,
+      "insert_time_ms": 2102.66,
+      "insert_disk_per_rec": 5.0091,
+      "search_disk_avg": 2.0,
+      "search_time_avg_ms": 0.085,
+      "range_disk_avg": 10011.0,
+      "range_time_avg_ms": 44.7927,
+      "range_is_fullscan": true
+    },
+    "100000": {
+      "insert_disk": 501531,
+      "insert_time_ms": 23157.34,
+      "insert_disk_per_rec": 5.0153,
+      "search_disk_avg": 2.0,
+      "search_time_avg_ms": 0.0525,
+      "range_disk_avg": 100039.0,
+      "range_time_avg_ms": 430.2209,
+      "range_is_fullscan": true
+    }
+  }
+}

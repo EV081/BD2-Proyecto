@@ -1,17 +1,7 @@
-"""
-ExtendibleHash — Indice basado en Extendible Hashing.
-
-Usa un directorio que duplica su tamanio cuando un bucket se desborda.
-Busqueda por igualdad en O(1) promedio (1-2 accesos a disco).
-Range search requiere escanear todos los buckets (no es eficiente para rangos).
-
-Interfaz compatible con BPlusTree para integrarse con dbengine.
-"""
-
 import os
 import struct
 
-from dbms.utils.pagemanager import PageManager
+from src.storage.pagemanager import PageManager
 
 
 class ExtendibleHash:
@@ -62,10 +52,8 @@ class ExtendibleHash:
         else:
             self._init_file()
 
-    # ------------------------------------------------------------------ #
-    #  DISK I/O STATS (delegados a PageManager)                            #
-    # ------------------------------------------------------------------ #
 
+    #  DISK I/O STATS (delegados a PageManager)                            
     @property
     def disk_reads(self):
         return self.pm.disk_reads
@@ -85,13 +73,11 @@ class ExtendibleHash:
     def reset_stats(self):
         self.pm.reset_stats()
 
-    # ------------------------------------------------------------------ #
-    #  INICIALIZACION Y METADATA                                           #
-    # ------------------------------------------------------------------ #
-
+  
+    #  INICIALIZACION Y METADATA                                           
     def _init_file(self):
         """Crea un archivo nuevo con depth=1, 2 buckets."""
-        # Pagina 0: metadata (se escribe al final con _save_metadata)
+  
         self.pm.write_page(0, bytearray(self.page_size))
 
         self.global_depth = 1
@@ -139,10 +125,7 @@ class ExtendibleHash:
             self.directory.append(page_id)
             off += 4
 
-    # ------------------------------------------------------------------ #
-    #  BUCKET OPERATIONS                                                   #
-    # ------------------------------------------------------------------ #
-
+    #  BUCKET OPERATIONS                                                  
     def _read_bucket(self, page_id):
         data = self.pm.read_page(page_id)
         local_depth, count = struct.unpack_from(self.BUCKET_HEADER_FMT, data, 0)
@@ -165,10 +148,8 @@ class ExtendibleHash:
             off += self.entry_size
         self.pm.write_page(page_id, page)
 
-    # ------------------------------------------------------------------ #
-    #  HASH                                                                #
-    # ------------------------------------------------------------------ #
-
+    
+    #  HASH                                                                
     def _hash(self, key):
         if isinstance(key, bytes):
             h = 0
@@ -201,10 +182,8 @@ class ExtendibleHash:
         packed = struct.pack(self.key_fmt, key)
         return struct.unpack(self.key_fmt, packed)[0]
 
-    # ------------------------------------------------------------------ #
-    #  BUSQUEDA                                                            #
-    # ------------------------------------------------------------------ #
-
+ 
+    #  BUSQUEDA                                                            
     def search(self, key):
         key = self._normalize_key(key)
         idx = self._hash(key)
@@ -240,10 +219,8 @@ class ExtendibleHash:
             "Use full scan o un indice B+Tree/Sequential."
         )
 
-    # ------------------------------------------------------------------ #
-    #  ADD (INSERT)                                                        #
-    # ------------------------------------------------------------------ #
 
+    #  ADD (INSERT)                                                      
     def add(self, key, value):
         key = self._normalize_key(key)
         idx = self._hash(key)
@@ -317,10 +294,8 @@ class ExtendibleHash:
                 return i
         return 0
 
-    # ------------------------------------------------------------------ #
-    #  REMOVE (DELETE)                                                     #
-    # ------------------------------------------------------------------ #
-
+  
+    #  REMOVE                                                  
     def remove(self, key, value=None):
         key = self._normalize_key(key)
         idx = self._hash(key)
