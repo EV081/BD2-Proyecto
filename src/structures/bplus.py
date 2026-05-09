@@ -1,8 +1,6 @@
 import math
 import struct
-
-from dbms.utils.pagemanager import PageManager
-
+from src.storage.pagemanager import PageManager
 
 class BPlusTree:
 
@@ -11,8 +9,7 @@ class BPlusTree:
     META_FMT = "=iI"                            # root_page(4) num_pages(4)
     META_SIZE = struct.calcsize(META_FMT)       # 8 bytes
 
-    def __init__(self, index_file, key_format="i", page_size=4096, unique=True,
-                 pm=None):
+    def __init__(self, index_file, key_format="i", page_size=4096, unique=True,pm=None):
         self.page_size = page_size
         self.unique = unique
         self.key_fmt = "=" + key_format
@@ -49,10 +46,7 @@ class BPlusTree:
         else:
             self._init_file()
 
-    # ------------------------------------------------------------------ #
-    #  DISK I/O STATS (delegados a PageManager)                            #
-    # ------------------------------------------------------------------ #
-
+    #  DISK I/O STATS (delegados a PageManager)                           
     @property
     def disk_reads(self):
         return self.pm.disk_reads
@@ -72,10 +66,7 @@ class BPlusTree:
     def reset_stats(self):
         self.pm.reset_stats()
 
-    # ------------------------------------------------------------------ #
-    #  ACCESO A DISCO (bajo nivel)                                        #
-    # ------------------------------------------------------------------ #
-
+    #  ACCESO A DISCO (bajo nivel)                                        
     def _init_file(self):
         page = bytearray(self.page_size)
         struct.pack_into(self.META_FMT, page, 0, -1, 1)
@@ -95,10 +86,7 @@ class BPlusTree:
         self.num_pages += 1
         return pid
 
-    # ------------------------------------------------------------------ #
-    #  SERIALIZACION DE NODOS                                             #
-    # ------------------------------------------------------------------ #
-
+    #  SERIALIZACION DE NODOS                                             
     def _read_node(self, page_id):
         data = self.pm.read_page(page_id)
         is_leaf, num_keys, next_leaf = struct.unpack_from(self.HEADER_FMT, data, 0)
@@ -154,10 +142,7 @@ class BPlusTree:
 
         self.pm.write_page(page_id, page)
 
-    # ------------------------------------------------------------------ #
-    #  HELPERS                                                            #
-    # ------------------------------------------------------------------ #
-
+    #  HELPERS                                                            
     def _normalize_key(self, key):
         if isinstance(key, str):
             key = key.encode("utf-8")
@@ -188,10 +173,7 @@ class BPlusTree:
                 break
         return None
 
-    # ------------------------------------------------------------------ #
-    #  BUSQUEDA                                                             #
-    # ------------------------------------------------------------------ #
-
+    #  BUSQUEDA                                                             
     def search(self, key):
         key = self._normalize_key(key)
         if self.root_page == -1:
@@ -263,10 +245,7 @@ class BPlusTree:
 
         return results
 
-    # ------------------------------------------------------------------ #
-    #  ADD (INSERT)                                                       #
-    # ------------------------------------------------------------------ #
-
+    #  ADD (INSERT)                                                       
     def add(self, key, value):
         key = self._normalize_key(key)
 
@@ -365,10 +344,8 @@ class BPlusTree:
         else:
             self._split_internal(parent, path)
 
-    # ------------------------------------------------------------------ #
-    #  REMOVE (DELETE)                                                    #
-    # ------------------------------------------------------------------ #
 
+    #  REMOVE (DELETE)                                                    
     def remove(self, key, value=None):
         key = self._normalize_key(key)
         if self.root_page == -1:
@@ -524,10 +501,7 @@ class BPlusTree:
         else:
             self._write_node(parent["page_id"], parent)
 
-    # ------------------------------------------------------------------ #
-    #  DEBUG                                                              #
-    # ------------------------------------------------------------------ #
-
+    #  DEBUG                                                              
     def print_tree(self):
         if self.root_page == -1:
             print("(arbol vacio)")
