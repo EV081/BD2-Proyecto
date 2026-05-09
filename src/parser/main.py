@@ -118,12 +118,15 @@ def execute_parser(scanner, input_path, output_dir=None, persist_ast=True):
 
         if result is None:
             if statement.get("type") == "create_table":
-                return {
+                res = {
                     "statement": statement,
                     "type": "create_table",
                     "status": "ok",
                     "table": statement.get("name"),
                 }
+                if metrics is not None:
+                    res["metrics"] = metrics
+                return res
             return {
                 "statement": statement,
                 "type": statement.get("type"),
@@ -131,12 +134,15 @@ def execute_parser(scanner, input_path, output_dir=None, persist_ast=True):
             }
 
         if statement.get("type") == "create_table":
-            return {
+            res = {
                 "statement": statement,
                 "type": "create_table",
                 "status": "ok",
                 "table": statement.get("name"),
             }
+            if metrics is not None:
+                res["metrics"] = metrics
+            return res
 
         if isinstance(result, (dict, str, int, float, bool)) or result is None:
             res = {

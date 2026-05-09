@@ -2,10 +2,10 @@
 DBVisitor — Ejecuta sentencias SQL sobre el motor de base de datos (dbengine).
 
 Conecta el parser SQL con el DBMS:
-  CREATE TABLE  -> DataBase(...) + create_index(...)
-  SELECT        -> select / select_range / select_radius / select_knn
-  INSERT        -> insert
-  DELETE        -> delete
+  CREATE TABLE  → DataBase(...) + create_index(...)
+  SELECT        → select / select_range / select_radius / select_knn
+  INSERT        → insert
+  DELETE        → delete
 """
 
 import os
@@ -41,7 +41,7 @@ def _map_type(parser_type):
     if upper in TYPE_MAP:
         return TYPE_MAP[upper]
     if upper.startswith("VARCHAR"):
-        # VARCHAR(100) -> char(100), VARCHAR -> char(255)
+        # VARCHAR(100) → char(100), VARCHAR → char(255)
         if "(" in parser_type:
             size = parser_type.split("(")[1].split(")")[0]
             return f"char({size})"
@@ -103,8 +103,9 @@ class DBVisitor(Visitor):
     # ================================================================ #
 
     def visit_create_table(self, node: CreateTableStmt):
+        t0 = time.perf_counter()
         schema = {}
-        point_cols = {}       # logico -> (col_x, col_y)
+        point_cols = {}       # logico → (col_x, col_y)
         indexes_to_create = []
         pk_col = None
         pk_index_type = "bplus"
@@ -135,11 +136,11 @@ class DBVisitor(Visitor):
                     if col.index:
                         idx_type = INDEX_MAP.get(col.index.upper(), col.index.lower())
                         pk_index_type = idx_type
-                    # Sin INDEX -> default bplus
+                    # Sin INDEX → default bplus
                 elif col.index:
                     idx_type = INDEX_MAP.get(col.index.upper(), col.index.lower())
                     if idx_type == "sequential" and pk_col is None:
-                        # Backward compat: INDEX SEQUENTIAL sin PRIMARY KEY -> PK clustered
+                        # Backward compat: INDEX SEQUENTIAL sin PRIMARY KEY → PK clustered
                         pk_col = col.name
                         pk_index_type = "sequential"
                     else:
@@ -178,7 +179,12 @@ class DBVisitor(Visitor):
         if node.file_path:
             self._load_from_file(db, node)
 
-        return db
+        elapsed = (time.perf_counter() - t0) * 1000
+        m = db._collect_metrics(elapsed)
+        self.last_metrics = m
+        self._print_metrics(m)
+
+        return {"metrics": m}
 
     def _load_from_file(self, db, node):
         """Carga datos desde un archivo CSV ubicado en uploaded_files/."""
@@ -199,11 +205,12 @@ class DBVisitor(Visitor):
         point_cols = db.point_columns
         count = 0
 
-        db._reset_all_stats()
-        t0 = time.perf_counter()
-
         with open(file_path, "r", encoding="utf-8") as f:
-            reader = csv.reader(f, delimiter=';')
+            # Auto-detectar delimitador leyendo la primera línea
+            sample = f.readline()
+            f.seek(0)
+            delimiter = ';' if ';' in sample else ','
+            reader = csv.reader(f, delimiter=delimiter)
 
             # Detectar header
             first_row = next(reader, None)
@@ -234,11 +241,7 @@ class DBVisitor(Visitor):
                         record[col] = val
                 db.insert(record)
                 count += 1
-
-        elapsed = (time.perf_counter() - t0) * 1000
-        m = db._collect_metrics(elapsed)
         print(f"  {count} registros cargados desde '{node.file_path}'")
-        self._print_metrics(m)
 
     # ================================================================ #
     #  SELECT                                                           #
@@ -420,7 +423,7 @@ class DBVisitor(Visitor):
         return {"deleted": deleted, "metrics": m}
 
     # ================================================================ #
-    #  Condition visitors
+    #  Condition visitors (dispatch directo — no usados en SELECT)      #
     # ================================================================ #
 
     def visit_comparison_cond(self, node):
