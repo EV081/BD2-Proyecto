@@ -1,0 +1,229 @@
+/* @theme utec-dbms */
+
+@import 'default';
+
+:root {
+  --blue-dark: #1e3a5f;
+  --blue-mid: #2563eb;
+  --blue-light: #3b82f6;
+  --blue-pale: #dbeafe;
+  --blue-text: #1e40af;
+  --blue-heading: #1d4ed8;
+  --blue-muted: #6b7280;
+  --blue-border: #bfdbfe;
+}
+
+section {
+  background: #ffffff;
+  color: var(--blue-dark);
+  font-family: 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 24px;
+  padding: 40px 60px;
+}
+
+/* Title slide */
+section.lead {
+  background: #ffffff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+section.lead h1 {
+  font-size: 2.2em;
+  color: var(--blue-heading);
+  margin-bottom: 0.3em;
+}
+
+section.lead h2 {
+  font-size: 1.1em;
+  color: var(--blue-light);
+  font-weight: 400;
+}
+
+section.lead p {
+  color: var(--blue-muted);
+  font-size: 0.85em;
+}
+
+/* Headings */
+h1 {
+  color: var(--blue-heading);
+  font-size: 1.6em;
+  border-bottom: 2px solid var(--blue-mid);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+
+h2 {
+  color: var(--blue-mid);
+  font-size: 1.25em;
+  margin-top: 0.5em;
+  margin-bottom: 0.4em;
+}
+
+h3 {
+  color: var(--blue-text);
+  font-size: 1.05em;
+  margin-top: 0.4em;
+  margin-bottom: 0.3em;
+}
+
+/* Code blocks */
+pre {
+  background: #f0f4ff !important;
+  border: 1px solid var(--blue-border);
+  border-radius: 8px;
+  padding: 12px 16px !important;
+  font-size: 0.55em;
+  line-height: 1.4;
+  overflow: auto;
+  color: var(--blue-dark);
+}
+
+code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.9em;
+  color: var(--blue-dark);
+}
+
+/* Inline code */
+:not(pre) > code {
+  background: var(--blue-pale);
+  color: var(--blue-text);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7em;
+  margin: 0.5em 0;
+}
+
+th {
+  background: var(--blue-mid);
+  color: white;
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--blue-border);
+  color: var(--blue-dark);
+}
+
+tr:nth-child(even) td {
+  background: #f8faff;
+}
+
+/* Lists */
+ul, ol {
+  margin: 0.3em 0;
+  padding-left: 1.4em;
+}
+
+li {
+  margin: 0.2em 0;
+  line-height: 1.4;
+  color: var(--blue-dark);
+}
+
+li::marker {
+  color: var(--blue-mid);
+}
+
+/* Strong and emphasis */
+strong {
+  color: var(--blue-text);
+}
+
+em {
+  color: var(--blue-mid);
+  font-style: italic;
+}
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid var(--blue-mid);
+  background: var(--blue-pale);
+  padding: 8px 16px;
+  margin: 0.5em 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.9em;
+}
+
+/* Images */
+img {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(30, 64, 175, 0.15);
+}
+
+/* Section slide */
+section.section {
+  background: var(--blue-pale);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+section.section h1 {
+  font-size: 2em;
+  border-bottom: none;
+  color: var(--blue-heading);
+}
+
+/* Footer / page number */
+section::after {
+  color: var(--blue-muted);
+  font-size: 0.6em;
+}
+
+/* Smaller font for dense slides */
+section.small {
+  font-size: 20px;
+}
+
+section.small pre {
+  font-size: 0.5em;
+}
+
+/* Two-column results layout */
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-top: 8px;
+}
+
+.result-row .col-img {
+  flex: 1;
+  min-width: 0;
+}
+
+.result-row .col-img img {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.result-row .col-table {
+  flex: 1;
+  min-width: 0;
+}
+
+.result-row .col-table table {
+  font-size: 0.65em;
+  width: 100%;
+}
+
+.result-row .col-table p {
+  font-size: 0.75em;
+  margin: 4px 0 0 0;
+}
