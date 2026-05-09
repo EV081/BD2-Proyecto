@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f7f9fb;
+  --foreground: #191c1e;
+  --surface: #ffffff;
+  --surface-subtle: #f8fafc;
+  --border: #e2e8f0;
+  --muted: #64748b;
+  --accent: #2563eb;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0d1117;
+  --foreground: #e6edf3;
+  --surface: #161b22;
+  --surface-subtle: #1c2128;
+  --border: #30363d;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+}
+
+html {
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--foreground);
+}
+
+body {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.db2-scrollbar {
+  scrollbar-color: color-mix(in srgb, var(--foreground) 16%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.db2-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.db2-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.db2-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--foreground) 16%, transparent);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
