@@ -2,9 +2,10 @@
 DataBase Manager
 """
 
+import os
 import time
 
-from dbms.utils.pagemanager import PageManager
+from dbms.utils.heapfile import HeapFile
 from dbms.utils.schema import SchemaManager
 from dbms.structures.bplus import BPlusTree
 from dbms.structures.rtree import RTree
@@ -85,9 +86,9 @@ class DataBase:
                 k: tuple(v) for k, v in raw.get("point_columns", {}).items()
             }
 
-            # Crear PageManager
+            # Crear HeapFile (hereda PageManager para I/O de paginas)
             record_format = self.build_struct_format(self.schema)
-            self.pm = PageManager(self.table_name, record_format)
+            self.pm = HeapFile(self.table_name, record_format)
 
             # Recrear indices desde la metadata guardada
             for idx_meta in indexes_meta:
@@ -98,7 +99,7 @@ class DataBase:
                                   unique=idx_meta["unique"], _save_meta=False)
 
             if not isinstance(raw, dict) or "record_count" not in raw:
-                self.record_count = PageManager.count_records(
+                self.record_count = HeapFile.count_records(
                     self.pm.path,
                     record_format,
                     self.PAGE_SIZE,
@@ -119,9 +120,9 @@ class DataBase:
             # Guardar en formato nuevo
             self._save_schema()
 
-            # Crear PageManager
+            # Crear HeapFile (hereda PageManager para I/O de paginas)
             record_format = self.build_struct_format(self.schema)
-            self.pm = PageManager(self.table_name, record_format)
+            self.pm = HeapFile(self.table_name, record_format)
 
             # Auto-crear indice unico sobre la primary key
             if primary_key:
@@ -318,6 +319,14 @@ class DataBase:
         """Elimina un indice. column puede ser str o tuple para rtree."""
         if column not in self.indexes:
             raise ValueError(f"No existe indice sobre '{column}'.")
+
+        # Delete index file(s) from disk
+        idx = self.indexes[column]["index"]
+        for attr in ("index_file", "main_file", "aux_file"):
+            path = getattr(idx, attr, None)
+            if path and os.path.exists(path):
+                os.remove(path)
+
         del self.indexes[column]
         self._save_schema()
 

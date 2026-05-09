@@ -1,9 +1,9 @@
-import os
 import threading
 import time
 from enum import Enum
 
 from dbms.structures.bplus import BPlusTree
+from dbms.utils.pagemanager import PageManager
 
 
 # ===================================================================== #
@@ -192,7 +192,7 @@ class PageLockManager:
 # ===================================================================== #
 
 class TransactionLog:
-    """Registro thread-safe de operaciones."""
+    """Registro de operaciones seguro entre hilos."""
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -225,7 +225,7 @@ class TransactionLog:
         """
         Analiza el log para identificar conflictos potenciales.
         Un conflicto ocurre cuando dos TX acceden a la misma pagina
-        y al menos uno es escritura.
+        y al menos uno es de escritura.
         """
         # Agrupar accesos por pagina
         page_accesses = {}
@@ -249,25 +249,85 @@ class TransactionLog:
 
 
 # ===================================================================== #
+#  CONCURRENT PAGE MANAGER                                                #
+# ===================================================================== #
+
+class ConcurrentPageManager(PageManager):
+    """
+    PageManager con soporte de concurrencia.
+    Envuelve read_page/write_page con:
+      - Adquisicion automatica de locks (S para lectura, X para escritura).
+      - Serializacion de I/O via _io_lock (seguridad entre hilos en disco).
+      - Registro de operaciones al TransactionLog.
+    """
+
+    def __init__(self, filepath, page_size, lock_manager, tx_log, get_tx):
+        self._lock_mgr = lock_manager
+        self._tx_log = tx_log
+        self._get_tx = get_tx       # callable -> tx_id | None
+        self._io_lock = threading.Lock()
+        super().__init__(filepath, page_size)
+
+    def read_page(self, page_id):
+        tx_id = self._get_tx()
+        if tx_id is not None:
+            self._lock_mgr.acquire(tx_id, page_id, LockType.SHARED)
+            self._tx_log.log(tx_id, "LOCK_S", f"page={page_id}")
+
+        with self._io_lock:
+            data = super().read_page(page_id)
+
+        if tx_id is not None:
+            self._tx_log.log(tx_id, "READ", f"page={page_id}")
+        return data
+
+    def write_page(self, page_id, data):
+        tx_id = self._get_tx()
+        if tx_id is not None:
+            self._lock_mgr.acquire(tx_id, page_id, LockType.EXCLUSIVE)
+            self._tx_log.log(tx_id, "LOCK_X", f"page={page_id}")
+
+        with self._io_lock:
+            super().write_page(page_id, data)
+
+        if tx_id is not None:
+            self._tx_log.log(tx_id, "WRITE", f"page={page_id}")
+
+
+# ===================================================================== #
 #  CONCURRENT B+ TREE                                                     #
 # ===================================================================== #
 
 class ConcurrentBPlusTree(BPlusTree):
     """
     B+ Tree con soporte de concurrencia.
-    Intercepta lecturas/escrituras de paginas para adquirir locks
+    Inyecta un ConcurrentPageManager que adquiere locks
     automaticamente segun el tx_id del hilo actual.
     """
 
     def __init__(self, index_file, lock_manager, tx_log, **kwargs):
+        import os
         self._lock_mgr = lock_manager
         self._tx_log = tx_log
         self._local = threading.local()
-        self._io_lock = threading.Lock()
         self._meta_lock = threading.Lock()
-        super().__init__(index_file, **kwargs)
 
-    # ---- thread-local tx_id ----
+        # Construir ruta igual que BPlusTree
+        index_dir = os.path.join(
+            os.path.dirname(os.path.abspath(index_file)), "indexes")
+        os.makedirs(index_dir, exist_ok=True)
+        index_path = os.path.join(index_dir, os.path.basename(index_file))
+
+        pm = ConcurrentPageManager(
+            index_path,
+            kwargs.get("page_size", 4096),
+            lock_manager,
+            tx_log,
+            self._get_tx,
+        )
+        super().__init__(index_file, pm=pm, **kwargs)
+
+    # ---- tx_id por hilo (thread-local) ----
 
     def _get_tx(self):
         return getattr(self._local, "tx_id", None)
@@ -275,46 +335,7 @@ class ConcurrentBPlusTree(BPlusTree):
     def _set_tx(self, tx_id):
         self._local.tx_id = tx_id
 
-    # ---- override acceso a disco ----
-
-    def _read_page_raw(self, page_id):
-        tx_id = self._get_tx()
-        if tx_id is not None:
-            self._lock_mgr.acquire(tx_id, page_id, LockType.SHARED)
-            self._tx_log.log(tx_id, "LOCK_S", f"page={page_id}")
-
-        with self._io_lock:
-            self.disk_reads += 1
-            with open(self.index_file, "rb") as f:
-                f.seek(page_id * self.page_size)
-                data = f.read(self.page_size)
-
-        if tx_id is not None:
-            self._tx_log.log(tx_id, "READ", f"page={page_id}")
-        return data
-
-    def _write_page_raw(self, page_id, data):
-        tx_id = self._get_tx()
-        if tx_id is not None:
-            self._lock_mgr.acquire(tx_id, page_id, LockType.EXCLUSIVE)
-            self._tx_log.log(tx_id, "LOCK_X", f"page={page_id}")
-
-        with self._io_lock:
-            self.disk_writes += 1
-            needed = (page_id + 1) * self.page_size
-            file_size = (
-                os.path.getsize(self.index_file)
-                if os.path.exists(self.index_file) else 0
-            )
-            if file_size < needed:
-                with open(self.index_file, "ab") as f:
-                    f.write(b"\x00" * (needed - file_size))
-            with open(self.index_file, "r+b") as f:
-                f.seek(page_id * self.page_size)
-                f.write(data)
-
-        if tx_id is not None:
-            self._tx_log.log(tx_id, "WRITE", f"page={page_id}")
+    # ---- metadata y alloc thread-safe ----
 
     def _alloc_page(self):
         with self._meta_lock:
@@ -355,7 +376,7 @@ class Transaction:
         self.log.log(self.tx_id, "BEGIN")
 
     def search(self, key):
-        """Busqueda exacta dentro de la transaccion."""
+        """Busqueda exacta dentro de la transaccion (search)."""
         self._check_active()
         self.tree._set_tx(self.tx_id)
         self.log.log(self.tx_id, "SEARCH", f"key={key}")

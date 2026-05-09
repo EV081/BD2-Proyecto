@@ -24,7 +24,7 @@ ORQUESTADOR (RAM) ─── dbengine.py
 |---|---|---|
 | **`dbms/utils/pagemanager.py`** | Datos de tablas → `data/*.bin` | Páginas fijas de 4096B con registros + flag de borrado |
 | **`dbms/structures/bplus.py`** | Índice B+ Tree → `indexes/{tabla}_{col}.idx` | Página 0 = metadata, nodos internos/hojas en páginas |
-| **`dbms/structures/sequentialfile.py`** | Índice secuencial → `indexes/{t}_{c}.idx` + `_aux.idx` | Archivo principal + auxiliar con punteros encadenados |
+| **`dbms/structures/sequentialfile.py`** | Índice secuencial → `indexes/{t}_{c}.idx` (archivo único paginado) | Página 0 = metadata, main pages + aux pages en páginas de 4096B |
 | **`dbms/structures/Extendible_Hashing.py`** | Índice hash → `indexes/{t}_{c}.idx` | Directorio + buckets en páginas |
 | **`dbms/structures/rtree.py`** | Índice espacial → `indexes/{t}_{cx}_{cy}.idx` | Nodos con MBRs en páginas |
 | **`dbms/utils/schema.py`** | Esquemas → `schemas/{tabla}.json` | JSON con columnas, tipos, PK, índices |
@@ -41,7 +41,7 @@ Todos estos usan operaciones como `seek()`, `read()`, `write()` sobre archivos b
 | **`dbms/dbengine.py`** | `self.schema` (dict), `self.indexes` (objetos), `self.record_count`, `self.point_columns` |
 | **`dbms/utils/pagemanager.py`** | `free_slots` (lista de huecos), `last_page/last_slot`, buffers de página (`bytearray(4096)`) |
 | **`dbms/structures/bplus.py`** | Nodos deserializados (dict con keys/values/children), path de traversal, `root_page`, `max_keys` |
-| **`dbms/structures/sequentialfile.py`** | `num_main`, `num_aux`, puntero `head`, entries durante traversal |
+| **`dbms/structures/sequentialfile.py`** | `head_page`, `first_aux`, contadores `num_main/num_aux`, entries deserializadas por página durante traversal |
 | **`dbms/structures/Extendible_Hashing.py`** | `self.directory` (lista de page IDs), `global_depth`, entries de bucket en RAM |
 | **`dbms/structures/rtree.py`** | Nodos con bounding boxes, priority queue (`heapq`) para k-NN |
 | **`dbms/structures/concurrency.py`** | **100% RAM** — `_page_locks`, `_tx_locks`, grafo wait-for para deadlock detection |
@@ -64,8 +64,9 @@ Todos estos usan operaciones como `seek()`, `read()`, `write()` sobre archivos b
               │  (node dict)│←─unmarshal──│  (B+ pages)     │
               │             │──_write_node→                  │
               │             │            │                  │
-              │ SeqFile     │──_read_entry→ indexes/*_aux   │
-              │  (head,ptrs)│←─entry data─│  (main+aux)     │
+              │ SeqFile     │─_read_data  │                  │
+              │  (entries   │  _page()───→ indexes/*.idx    │
+              │   per page) │←─page buf──│  (main+aux pags) │
               │             │            │                  │
               │ ExtHash     │──_read_page─→ indexes/*.idx   │
               │ (directory) │←─bucket────│  (hash buckets)  │
@@ -92,13 +93,75 @@ Todos estos usan operaciones como `seek()`, `read()`, `write()` sobre archivos b
 - **RAM**: Nodos se deserializan a dicts `{"is_leaf", "keys", "values"/"children", "next_leaf"}`
 - **Operaciones de disco**: `_read_page_raw()`, `_write_page_raw()`, `_read_node()`, `_write_node()`
 
-### Sequential File (`sequentialfile.py`)
+### Sequential File (`sequentialfile.py`) — Paginado
 
-- **Disco**: Dos archivos — principal (`*.idx`) y auxiliar (`*_aux.idx`)
-  - Header del principal: `num_main(4) + num_aux(4) + head_file(1) + head_pos(4) + max_aux(4)`
-  - Entries: `key + RID(8B) + next_ptr(file_id[1] + pos[4])`
-- **RAM**: Puntero `head`, contadores `num_main/num_aux`, entries durante traversal
-- **Reconstrucción**: Cuando `num_aux >= max_aux`, merge de ambos archivos en uno ordenado
+Archivo único paginado con área principal ordenada y área auxiliar de overflow.
+
+- **Disco**: Archivo único `indexes/{tabla}_{columna}.idx`
+  - **Página 0 — Metadata (24B)**:
+    ```
+    num_main(4) + num_aux(4) + head_page(4) + num_pages(4) + max_aux(4) + first_aux(4)
+    ```
+  - **Main pages**: entries ordenadas por key, encadenadas via `next_page` en header de página
+  - **Aux pages**: overflow para inserciones nuevas, ordenadas dentro de cada página
+  - **Header de data page (8B)**: `num_entries(4) + next_page(4)`
+  - **Entry**: `key(key_size) + RID(page_num[4] + slot[4])` — sin punteros por entry
+  - **Entries por página**: `(4096 - 8) / entry_size` ≈ 340 para claves `int`
+- **RAM**: `head_page`, `first_aux`, contadores `num_main/num_aux`, entries deserializadas por página
+- **Búsqueda**: Binaria dentro de cada página (`_bisect_left`), skip de páginas por rango de keys
+- **Reconstrucción**: Cuando `num_aux >= max_aux`, merge de main+aux en páginas main ordenadas
+- **Operaciones de disco**: `_read_page_raw()`, `_write_page_raw()`, `_read_data_page()`, `_write_data_page()`
+
+#### Layout del archivo en disco
+
+```
+┌──────────────────────────────────────────────────────┐
+│ Página 0: METADATA                                   │
+│   num_main | num_aux | head_page | num_pages          │
+│   max_aux  | first_aux                                │
+├──────────────────────────────────────────────────────┤
+│ Página 1: MAIN PAGE (sorted)          next → Pág 2   │
+│   [key₁,RID₁] [key₂,RID₂] ... [keyₙ,RIDₙ]          │
+├──────────────────────────────────────────────────────┤
+│ Página 2: MAIN PAGE (sorted)          next → -1      │
+│   [keyₙ₊₁,RIDₙ₊₁] ...                               │
+├──────────────────────────────────────────────────────┤
+│ Página 3: AUX PAGE (sorted intra-page) next → -1     │
+│   [keyₓ,RIDₓ] ... (overflow inserts)                 │
+└──────────────────────────────────────────────────────┘
+```
+
+#### Flujo de búsqueda
+
+```
+search(key=42)
+  │
+  ├─ Main pages (head_page → next_page → ...)
+  │    │
+  │    ├─ Pág 1: last_key=30 < 42 → SKIP
+  │    ├─ Pág 2: last_key=50 ≥ 42 → binary search → FOUND ✓
+  │    └─ (short-circuit: no lee más páginas)
+  │
+  └─ Aux pages (solo si no encontrado en main)
+       └─ Pág 3: binary search dentro de la página
+```
+
+#### Reconstrucción
+
+```
+ANTES (num_aux ≥ max_aux)              DESPUÉS
+┌─────────────┐ ┌─────────────┐       ┌─────────────┐
+│ Main pág 1  │ │ Aux pág 3   │       │ Main pág 1  │ (todo sorted)
+│ [1,3,5,7]   │ │ [2,6,8]     │ ───→  │ [1,2,3,5,6] │
+├─────────────┤ └─────────────┘       ├─────────────┤
+│ Main pág 2  │                       │ Main pág 2  │
+│ [9,11,13]   │                       │ [7,8,9,11,13]│
+└─────────────┘                       └─────────────┘
+                                      Aux: vacío
+                                      Archivo truncado
+```
+
+**Consistencia multi-índice**: La reconstrucción solo reorganiza las páginas internas del SequentialFile. Los RIDs `(page, slot)` apuntan al heap (`data/*.bin`) que NO se modifica, por lo que otros índices (B+Tree, Hash, R-Tree) permanecen válidos.
 
 ### Extendible Hashing (`Extendible_Hashing.py`)
 
@@ -130,6 +193,12 @@ Todos estos usan operaciones como `seek()`, `read()`, `write()` sobre archivos b
 | `write_record(page, slot, record)` | Read-modify-write | Modifica buffer, reescribe página |
 | `add_record(record)` | Asigna slot, escribe | Actualiza `free_slots`, `last_page` |
 | `delete_record(page, slot)` | Marca flag borrado | Agrega a `free_slots` |
+
+---
+
+## drop_index — Limpieza de archivos
+
+`dbengine.py:drop_index()` elimina el índice del diccionario en RAM **y borra los archivos de disco** asociados (`index_file`, `main_file`, `aux_file`). Esto evita que un archivo de índice de un tipo anterior (ej. B+Tree) corrompa un índice nuevo de otro tipo (ej. Sequential) creado sobre la misma columna.
 
 ---
 

@@ -1,6 +1,7 @@
-import os
 import math
 import struct
+
+from dbms.utils.pagemanager import PageManager
 
 
 class BPlusTree:
@@ -10,8 +11,8 @@ class BPlusTree:
     META_FMT = "=iI"                            # root_page(4) num_pages(4)
     META_SIZE = struct.calcsize(META_FMT)       # 8 bytes
 
-    def __init__(self, index_file, key_format="i", page_size=4096, unique=True):
-        self.index_file = index_file
+    def __init__(self, index_file, key_format="i", page_size=4096, unique=True,
+                 pm=None):
         self.page_size = page_size
         self.unique = unique
         self.key_fmt = "=" + key_format
@@ -21,72 +22,73 @@ class BPlusTree:
         self.child_size = 4                     # page_id
 
         # Max keys por nodo (limitado por espacio en pagina)
-        # Interno: HEADER + max_keys * key + (max_keys+1) * child <= page_size
-        # Hoja:    HEADER + max_keys * key + max_keys * val     <= page_size
         internal_max = (page_size - self.HEADER_SIZE - self.child_size) // (self.key_size + self.child_size)
         leaf_max = (page_size - self.HEADER_SIZE) // (self.key_size + self.val_size)
         self.max_keys = min(internal_max, leaf_max)
-
-        # Garantiza que los nodos esten al menos medio llenos
         self.min_keys = math.ceil(self.max_keys / 2)
-
-        # Contadores de acceso a disco
-        self.disk_reads = 0
-        self.disk_writes = 0
 
         # Metadata
         self.root_page = -1
         self.num_pages = 1   # page 0 = metadata
 
-        # Guardar el archivo de indice dentro de la carpeta "indexes"
-        index_dir = os.path.join(os.path.dirname(os.path.abspath(index_file)), "indexes")
-        os.makedirs(index_dir, exist_ok=True)
-        self.index_file = os.path.join(index_dir, os.path.basename(index_file))
+        # PageManager para I/O de paginas
+        if pm is not None:
+            self.pm = pm
+        else:
+            import os
+            index_dir = os.path.join(
+                os.path.dirname(os.path.abspath(index_file)), "indexes")
+            os.makedirs(index_dir, exist_ok=True)
+            index_path = os.path.join(index_dir, os.path.basename(index_file))
+            self.pm = PageManager(index_path, page_size)
 
-        if os.path.exists(self.index_file) and os.path.getsize(self.index_file) >= page_size:
+        self.index_file = self.pm.path
+
+        if self.pm.num_pages() > 0:
             self._load_metadata()
         else:
             self._init_file()
 
+    # ------------------------------------------------------------------ #
+    #  DISK I/O STATS (delegados a PageManager)                            #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def disk_reads(self):
+        return self.pm.disk_reads
+
+    @disk_reads.setter
+    def disk_reads(self, val):
+        self.pm.disk_reads = val
+
+    @property
+    def disk_writes(self):
+        return self.pm.disk_writes
+
+    @disk_writes.setter
+    def disk_writes(self, val):
+        self.pm.disk_writes = val
+
     def reset_stats(self):
-        self.disk_reads = 0
-        self.disk_writes = 0
+        self.pm.reset_stats()
 
     # ------------------------------------------------------------------ #
     #  ACCESO A DISCO (bajo nivel)                                        #
     # ------------------------------------------------------------------ #
 
     def _init_file(self):
-        with open(self.index_file, "wb") as f:
-            page = bytearray(self.page_size)
-            struct.pack_into(self.META_FMT, page, 0, -1, 1)
-            f.write(page)
+        page = bytearray(self.page_size)
+        struct.pack_into(self.META_FMT, page, 0, -1, 1)
+        self.pm.write_page(0, page)
 
     def _load_metadata(self):
-        data = self._read_page_raw(0)
+        data = self.pm.read_page(0)
         self.root_page, self.num_pages = struct.unpack_from(self.META_FMT, data, 0)
 
     def _save_metadata(self):
         page = bytearray(self.page_size)
         struct.pack_into(self.META_FMT, page, 0, self.root_page, self.num_pages)
-        self._write_page_raw(0, page)
-
-    def _read_page_raw(self, page_id):
-        self.disk_reads += 1
-        with open(self.index_file, "rb") as f:
-            f.seek(page_id * self.page_size)
-            return f.read(self.page_size)
-
-    def _write_page_raw(self, page_id, data):
-        self.disk_writes += 1
-        needed = (page_id + 1) * self.page_size
-        file_size = os.path.getsize(self.index_file) if os.path.exists(self.index_file) else 0
-        if file_size < needed:
-            with open(self.index_file, "ab") as f:
-                f.write(b"\x00" * (needed - file_size))
-        with open(self.index_file, "r+b") as f:
-            f.seek(page_id * self.page_size)
-            f.write(data)
+        self.pm.write_page(0, page)
 
     def _alloc_page(self):
         pid = self.num_pages
@@ -98,7 +100,7 @@ class BPlusTree:
     # ------------------------------------------------------------------ #
 
     def _read_node(self, page_id):
-        data = self._read_page_raw(page_id)
+        data = self.pm.read_page(page_id)
         is_leaf, num_keys, next_leaf = struct.unpack_from(self.HEADER_FMT, data, 0)
 
         keys = []
@@ -107,7 +109,6 @@ class BPlusTree:
             keys.append(struct.unpack_from(self.key_fmt, data, off)[0])
             off += self.key_size
 
-        # Area de values/children empieza despues de max_keys claves
         area_off = self.HEADER_SIZE + self.max_keys * self.key_size
 
         if is_leaf:
@@ -151,7 +152,7 @@ class BPlusTree:
             for i, c in enumerate(node["children"]):
                 struct.pack_into("=i", page, area_off + i * self.child_size, c)
 
-        self._write_page_raw(page_id, page)
+        self.pm.write_page(page_id, page)
 
     # ------------------------------------------------------------------ #
     #  HELPERS                                                            #
@@ -196,8 +197,6 @@ class BPlusTree:
         if self.root_page == -1:
             return None
 
-        # Para non-unique, ir a la hoja izquierda para encontrar la primera ocurrencia.
-        # Para unique, ir a la derecha (donde esta el dato cuando key == separador).
         leaf, _ = self._find_leaf(key, leftmost=not self.unique)
 
         while True:
@@ -211,14 +210,6 @@ class BPlusTree:
             leaf = self._read_node(leaf["next_leaf"])
 
     def search_all(self, key, limit=0, offset=0):
-        """
-        Retorna los RIDs asociados a una clave (indice no-unico).
-
-        Args:
-            key: Clave a buscar.
-            limit: Maximo de resultados a retornar (0 = sin limite).
-            offset: Cantidad de resultados a saltar antes de empezar a recoger.
-        """
         key = self._normalize_key(key)
         if self.root_page == -1:
             return []
@@ -245,15 +236,6 @@ class BPlusTree:
         return results
 
     def range_search(self, begin_key, end_key, limit=0, offset=0):
-        """
-        Busqueda por rango [begin, end].
-
-        Args:
-            begin_key: Clave inicial (inclusive).
-            end_key: Clave final (inclusive).
-            limit: Maximo de resultados a retornar (0 = sin limite).
-            offset: Cantidad de resultados a saltar antes de empezar a recoger.
-        """
         begin_key = self._normalize_key(begin_key)
         end_key = self._normalize_key(end_key)
 
@@ -288,7 +270,6 @@ class BPlusTree:
     def add(self, key, value):
         key = self._normalize_key(key)
 
-        # Arbol vacio: crear primera hoja
         if self.root_page == -1:
             pid = self._alloc_page()
             self._write_node(pid, {
@@ -301,20 +282,15 @@ class BPlusTree:
 
         leaf, path = self._find_leaf(key)
 
-        # Posicion de insercion (mantener orden)
         i = 0
         while i < len(leaf["keys"]) and key > leaf["keys"][i]:
             i += 1
 
-        # Manejo de clave duplicada
         if i < len(leaf["keys"]) and leaf["keys"][i] == key:
             if self.unique:
-                # Indice unico: sobreescribir el RID existente
                 leaf["values"][i] = value
                 self._write_node(leaf["page_id"], leaf)
                 return
-            # Indice no-unico: avanzar tras los duplicados existentes
-            # para insertar al final del grupo (mantener orden de insercion)
             while i < len(leaf["keys"]) and leaf["keys"][i] == key:
                 i += 1
 
@@ -370,7 +346,6 @@ class BPlusTree:
 
     def _insert_into_parent(self, left_pid, key, right_pid, path):
         if not path:
-            # Nueva raiz
             new_root = self._alloc_page()
             self._write_node(new_root, {
                 "is_leaf": False,
@@ -399,23 +374,16 @@ class BPlusTree:
         if self.root_page == -1:
             return False
 
-        # Para non-unique, buscar desde la hoja izquierda;
-        # para unique, ir a la derecha (donde key == separador implica dato a la derecha)
         leftmost = not self.unique
         leaf, path = self._find_leaf(key, leftmost=leftmost)
 
-        # Buscar clave (y opcionalmente RID especifico) en la hoja
         key_idx = self._find_key_in_leaf(leaf, key, value)
 
-        # Si no se encontro en esta hoja, escanear hojas siguientes (non-unique)
         if key_idx is None and not self.unique:
             while leaf["next_leaf"] != -1:
                 next_leaf = self._read_node(leaf["next_leaf"])
                 key_idx = self._find_key_in_leaf(next_leaf, key, value)
                 if key_idx is not None:
-                    # Encontrado en hoja accedida via next_leaf.
-                    # Eliminar directamente sin underflow cascading
-                    # (la hoja intermedia tipicamente no esta cerca del minimo).
                     next_leaf["keys"].pop(key_idx)
                     next_leaf["values"].pop(key_idx)
                     self._write_node(next_leaf["page_id"], next_leaf)
@@ -431,7 +399,6 @@ class BPlusTree:
         leaf["keys"].pop(key_idx)
         leaf["values"].pop(key_idx)
 
-        # Caso especial: hoja raiz
         if leaf["page_id"] == self.root_page:
             if not leaf["keys"]:
                 self.root_page = -1
@@ -444,7 +411,6 @@ class BPlusTree:
             self._save_metadata()
             return True
 
-        # Underflow: redistribuir o fusionar
         self._handle_leaf_underflow(leaf, path)
         self._save_metadata()
         return True
@@ -456,7 +422,6 @@ class BPlusTree:
 
         parent, child_idx = path[-1]
 
-        # Intentar prestar del hermano izquierdo
         if child_idx > 0:
             left = self._read_node(parent["children"][child_idx - 1])
             if len(left["keys"]) > self.min_keys:
@@ -468,7 +433,6 @@ class BPlusTree:
                 self._write_node(parent["page_id"], parent)
                 return
 
-        # Intentar prestar del hermano derecho
         if child_idx < len(parent["children"]) - 1:
             right = self._read_node(parent["children"][child_idx + 1])
             if len(right["keys"]) > self.min_keys:
@@ -480,7 +444,6 @@ class BPlusTree:
                 self._write_node(parent["page_id"], parent)
                 return
 
-        # Fusionar
         if child_idx > 0:
             left = self._read_node(parent["children"][child_idx - 1])
             self._merge_leaves(left, node, parent, child_idx - 1, path)
@@ -515,7 +478,6 @@ class BPlusTree:
 
         parent, child_idx = path[-1]
 
-        # Prestar del hermano izquierdo
         if child_idx > 0:
             left = self._read_node(parent["children"][child_idx - 1])
             if len(left["keys"]) > self.min_keys:
@@ -527,7 +489,6 @@ class BPlusTree:
                 self._write_node(parent["page_id"], parent)
                 return
 
-        # Prestar del hermano derecho
         if child_idx < len(parent["children"]) - 1:
             right = self._read_node(parent["children"][child_idx + 1])
             if len(right["keys"]) > self.min_keys:
@@ -539,7 +500,6 @@ class BPlusTree:
                 self._write_node(parent["page_id"], parent)
                 return
 
-        # Fusionar nodos internos
         if child_idx > 0:
             left = self._read_node(parent["children"][child_idx - 1])
             self._merge_internal(left, node, parent, child_idx - 1, path)
@@ -578,7 +538,6 @@ class BPlusTree:
         node = self._read_node(page_id)
         indent = "  " * level
         if node["is_leaf"]:
-            pairs = list(zip(node["keys"], node["values"]))
             print(f"{indent}HOJA[p{page_id}] keys={node['keys']}  next={node['next_leaf']}")
         else:
             print(f"{indent}INTERNO[p{page_id}] keys={node['keys']}")

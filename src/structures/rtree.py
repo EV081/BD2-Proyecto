@@ -14,6 +14,8 @@ import math
 import struct
 import heapq
 
+from dbms.utils.pagemanager import PageManager
+
 
 class RTree:
 
@@ -33,74 +35,76 @@ class RTree:
     INTERNAL_ENTRY_FMT = "=ddddi"
     INTERNAL_ENTRY_SIZE = struct.calcsize(INTERNAL_ENTRY_FMT)
 
-    def __init__(self, index_file, page_size=4096):
+    def __init__(self, index_file, page_size=4096, pm=None):
         self.page_size = page_size
 
-        # Max entries por tipo de nodo
         self.max_leaf_entries = (page_size - self.HEADER_SIZE) // self.LEAF_ENTRY_SIZE
         self.max_internal_entries = (page_size - self.HEADER_SIZE) // self.INTERNAL_ENTRY_SIZE
 
-        # Min entries (ceil(M/2), minimo 2 para que split funcione)
         self.min_leaf_entries = max(2, math.ceil(self.max_leaf_entries / 2))
         self.min_internal_entries = max(2, math.ceil(self.max_internal_entries / 2))
-
-        # Contadores de acceso a disco
-        self.disk_reads = 0
-        self.disk_writes = 0
 
         # Metadata
         self.root_page = -1
         self.num_pages = 1  # page 0 = metadata
 
-        # Guardar en carpeta indexes/
-        index_dir = os.path.join(os.path.dirname(os.path.abspath(index_file)), "indexes")
-        os.makedirs(index_dir, exist_ok=True)
-        self.index_file = os.path.join(index_dir, os.path.basename(index_file))
+        # PageManager para I/O de paginas
+        if pm is not None:
+            self.pm = pm
+        else:
+            index_dir = os.path.join(
+                os.path.dirname(os.path.abspath(index_file)), "indexes")
+            os.makedirs(index_dir, exist_ok=True)
+            index_path = os.path.join(index_dir, os.path.basename(index_file))
+            self.pm = PageManager(index_path, page_size)
 
-        if os.path.exists(self.index_file) and os.path.getsize(self.index_file) >= page_size:
+        self.index_file = self.pm.path
+
+        if self.pm.num_pages() > 0:
             self._load_metadata()
         else:
             self._init_file()
 
+    # ------------------------------------------------------------------ #
+    #  DISK I/O STATS (delegados a PageManager)                            #
+    # ------------------------------------------------------------------ #
+
+    @property
+    def disk_reads(self):
+        return self.pm.disk_reads
+
+    @disk_reads.setter
+    def disk_reads(self, val):
+        self.pm.disk_reads = val
+
+    @property
+    def disk_writes(self):
+        return self.pm.disk_writes
+
+    @disk_writes.setter
+    def disk_writes(self, val):
+        self.pm.disk_writes = val
+
     def reset_stats(self):
-        self.disk_reads = 0
-        self.disk_writes = 0
+        self.pm.reset_stats()
 
     # ------------------------------------------------------------------ #
     #  ACCESO A DISCO                                                      #
     # ------------------------------------------------------------------ #
 
     def _init_file(self):
-        with open(self.index_file, "wb") as f:
-            page = bytearray(self.page_size)
-            struct.pack_into(self.META_FMT, page, 0, -1, 1)
-            f.write(page)
+        page = bytearray(self.page_size)
+        struct.pack_into(self.META_FMT, page, 0, -1, 1)
+        self.pm.write_page(0, page)
 
     def _load_metadata(self):
-        data = self._read_page_raw(0)
+        data = self.pm.read_page(0)
         self.root_page, self.num_pages = struct.unpack_from(self.META_FMT, data, 0)
 
     def _save_metadata(self):
         page = bytearray(self.page_size)
         struct.pack_into(self.META_FMT, page, 0, self.root_page, self.num_pages)
-        self._write_page_raw(0, page)
-
-    def _read_page_raw(self, page_id):
-        self.disk_reads += 1
-        with open(self.index_file, "rb") as f:
-            f.seek(page_id * self.page_size)
-            return f.read(self.page_size)
-
-    def _write_page_raw(self, page_id, data):
-        self.disk_writes += 1
-        needed = (page_id + 1) * self.page_size
-        file_size = os.path.getsize(self.index_file) if os.path.exists(self.index_file) else 0
-        if file_size < needed:
-            with open(self.index_file, "ab") as f:
-                f.write(b"\x00" * (needed - file_size))
-        with open(self.index_file, "r+b") as f:
-            f.seek(page_id * self.page_size)
-            f.write(data)
+        self.pm.write_page(0, page)
 
     def _alloc_page(self):
         pid = self.num_pages
@@ -112,7 +116,7 @@ class RTree:
     # ------------------------------------------------------------------ #
 
     def _read_node(self, page_id):
-        data = self._read_page_raw(page_id)
+        data = self.pm.read_page(page_id)
         is_leaf, num_entries = struct.unpack_from(self.HEADER_FMT, data, 0)
 
         if is_leaf:
@@ -155,7 +159,7 @@ class RTree:
                                  mbr[0], mbr[1], mbr[2], mbr[3], e["child"])
                 off += self.INTERNAL_ENTRY_SIZE
 
-        self._write_page_raw(page_id, page)
+        self.pm.write_page(page_id, page)
 
     # ------------------------------------------------------------------ #
     #  MBR HELPERS                                                         #
@@ -230,7 +234,6 @@ class RTree:
         entry = {"x": float(x), "y": float(y), "rid": tuple(rid)}
         point_mbr = self._point_mbr(entry["x"], entry["y"])
 
-        # Arbol vacio
         if self.root_page == -1:
             pid = self._alloc_page()
             self._write_node(pid, {
@@ -240,17 +243,13 @@ class RTree:
             self._save_metadata()
             return
 
-        # Elegir la mejor hoja
         leaf, path = self._choose_leaf(point_mbr)
-
-        # Insertar en la hoja
         leaf["entries"].append(entry)
 
         if len(leaf["entries"]) <= self.max_leaf_entries:
             self._write_node(leaf["page_id"], leaf)
             self._adjust_tree(path, leaf)
         else:
-            # Split hoja
             new_node = self._split_node(leaf)
             self._write_node(leaf["page_id"], leaf)
             self._write_node(new_node["page_id"], new_node)
@@ -308,7 +307,6 @@ class RTree:
                 group2.extend(remaining)
                 break
 
-            # Pick next: entrada con mayor preferencia por un grupo
             best_idx = 0
             best_diff = -1.0
             for i, e in enumerate(remaining):
@@ -388,7 +386,6 @@ class RTree:
 
             if len(parent["entries"]) <= self.max_internal_entries:
                 self._write_node(parent["page_id"], parent)
-                # Ajustar MBRs restantes hacia arriba
                 mbr = self._compute_mbr(parent)
                 for p, i in reversed(path):
                     p["entries"][i]["mbr"] = mbr
@@ -404,7 +401,6 @@ class RTree:
                 node_mbr = self._compute_mbr(parent)
                 new_mbr = self._compute_mbr(new_parent)
 
-        # Root fue splitteado -> nueva raiz
         new_root_pid = self._alloc_page()
         new_root = {
             "is_leaf": False,
@@ -422,10 +418,6 @@ class RTree:
     # ------------------------------------------------------------------ #
 
     def radius_search(self, cx, cy, radius, limit=0, offset=0):
-        """
-        Busca todos los puntos dentro de distancia `radius` desde (cx, cy).
-        Retorna lista de (x, y, rid, distance) ordenada por distancia.
-        """
         if self.root_page == -1:
             return []
 
@@ -460,10 +452,6 @@ class RTree:
     # ------------------------------------------------------------------ #
 
     def knn_search(self, qx, qy, k, limit=0, offset=0):
-        """
-        Busca los k vecinos mas cercanos a (qx, qy) usando min-heap.
-        Retorna lista de (x, y, rid, distance) ordenada por distancia.
-        """
         if self.root_page == -1 or k <= 0:
             return []
 
@@ -507,7 +495,6 @@ class RTree:
     # ------------------------------------------------------------------ #
 
     def search(self, x, y):
-        """Busca RID para punto exacto (x, y). Retorna primer match o None."""
         if self.root_page == -1:
             return None
 
@@ -527,7 +514,6 @@ class RTree:
         return None
 
     def search_all(self, x, y, limit=0, offset=0):
-        """Busca todos los RIDs para punto (x, y)."""
         if self.root_page == -1:
             return []
 
@@ -559,16 +545,10 @@ class RTree:
     # ------------------------------------------------------------------ #
 
     def remove(self, x, y, rid=None):
-        """
-        Elimina un punto (x, y) del arbol.
-        Si rid es especificado, solo elimina la entrada con ese RID exacto.
-        Usa condense-tree con reinsercion de entradas huerfanas.
-        """
         x, y = float(x), float(y)
         if self.root_page == -1:
             return False
 
-        # Buscar con path
         path = []
         found = self._search_with_path(self.root_page, x, y, rid, path)
 
@@ -577,12 +557,10 @@ class RTree:
 
         leaf_page_id, entry_idx = found
 
-        # Eliminar entrada de la hoja
         leaf = self._read_node(leaf_page_id)
         leaf["entries"].pop(entry_idx)
         self._write_node(leaf_page_id, leaf)
 
-        # Condense tree: recolectar entradas huerfanas y ajustar MBRs
         orphaned = []
         node = leaf
 
@@ -592,20 +570,16 @@ class RTree:
             min_entries = self.min_leaf_entries if is_leaf else self.min_internal_entries
 
             if not node["entries"]:
-                # Nodo vacio: remover del padre
                 parent["entries"].pop(child_idx)
             elif len(node["entries"]) < min_entries and node["page_id"] != self.root_page:
-                # Underflow: recolectar entradas y remover del padre
                 orphaned.extend(self._collect_leaf_entries(node))
                 parent["entries"].pop(child_idx)
             else:
-                # Actualizar MBR en el padre
                 parent["entries"][child_idx]["mbr"] = self._compute_mbr(node)
 
             self._write_node(parent["page_id"], parent)
             node = parent
 
-        # Ajustar raiz
         root = self._read_node(self.root_page)
         if not root["entries"]:
             self.root_page = -1
@@ -614,17 +588,12 @@ class RTree:
 
         self._save_metadata()
 
-        # Reinsertar entradas huerfanas
         for ox, oy, orid in orphaned:
             self.add(ox, oy, orid)
 
         return True
 
     def _search_with_path(self, page_id, x, y, rid, path):
-        """
-        Busca entrada (x, y, rid) construyendo el path.
-        Retorna (leaf_page_id, entry_index) o None.
-        """
         node = self._read_node(page_id)
 
         if node["is_leaf"]:
@@ -645,7 +614,6 @@ class RTree:
         return None
 
     def _collect_leaf_entries(self, node):
-        """Recolecta todas las entradas hoja de un subarbol."""
         entries = []
         if node["is_leaf"]:
             for e in node["entries"]:
@@ -661,18 +629,10 @@ class RTree:
     # ------------------------------------------------------------------ #
 
     def radius_search_json(self, cx, cy, radius, limit=0, offset=0):
-        """
-        Busqueda circular con respuesta JSON para visualizacion.
-        Rojo = punto de query, Azul = puntos resultado.
-        """
         results = self.radius_search(cx, cy, radius, limit=limit, offset=offset)
         return self._format_json(cx, cy, results)
 
     def knn_search_json(self, qx, qy, k, limit=0, offset=0):
-        """
-        k-NN con respuesta JSON para visualizacion.
-        Rojo = punto de query, Azul = puntos resultado.
-        """
         results = self.knn_search(qx, qy, k, limit=limit, offset=offset)
         return self._format_json(qx, qy, results)
 
