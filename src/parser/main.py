@@ -4,9 +4,9 @@ import json
 
 from .scanner import *
 from .parser import Parser, ParserError
-from .visitor import PrintVisitor
+from .visitor import TraceVisitor
 from .db_visitor import DBVisitor
-from dbms.dbengine import execute_sql
+from src.api.dbengine import execute_sql
 
 
 def collect_tokens(scanner):
@@ -40,30 +40,45 @@ def execute_parser(scanner, input_path, output_dir=None, persist_ast=True):
 
     def _normalize_result(node, result):
         statement = node.to_dict()
+        metrics = None
+
+        if isinstance(result, dict) and "metrics" in result:
+            metrics = result.pop("metrics")
 
         if statement.get("type") == "select" and isinstance(result, dict):
-            if "columns" in result and "rows" in result:
-                return {
+            if result.get("is_spatial"):
+                res = {
+                    "statement": statement,
+                    "type": "select",
+                    "table": statement.get("table"),
+                    "is_spatial": True,
+                    "spatial_data": result.get("spatial_data"),
+                }
+                if metrics is not None:
+                    res["metrics"] = metrics
+                return res
+            elif "columns" in result and "rows" in result:
+                res = {
                     "statement": statement,
                     "type": "select",
                     "table": statement.get("table"),
                     "columns": result["columns"],
                     "rows": result["rows"],
                 }
+                if metrics is not None:
+                    res["metrics"] = metrics
+                return res
 
         if isinstance(result, list):
-            if statement.get("type") == "select":
-                return {
-                    "statement": statement,
-                    "type": "select",
-                    "columns": statement.get("columns", []),
-                    "rows": result,
-                }
-            return {
+            res = {
                 "statement": statement,
-                "type": "rows",
+                "type": "select" if statement.get("type") == "select" else "rows",
+                "columns": statement.get("columns", []) if statement.get("type") == "select" else [],
                 "rows": result,
             }
+            if metrics is not None:
+                res["metrics"] = metrics
+            return res
 
         if isinstance(result, int):
             if statement.get("type") == "insert":
@@ -79,6 +94,27 @@ def execute_parser(scanner, input_path, output_dir=None, persist_ast=True):
                     "type": "delete",
                     "affected_rows": result,
                 }
+
+        if statement.get("type") == "insert" and isinstance(result, dict) and "rid" in result:
+            res = {
+                "statement": statement,
+                "type": "insert",
+                "affected_rows": 1,
+                "rid": result["rid"],
+            }
+            if metrics is not None:
+                res["metrics"] = metrics
+            return res
+
+        if statement.get("type") == "delete" and isinstance(result, dict) and "deleted" in result:
+            res = {
+                "statement": statement,
+                "type": "delete",
+                "affected_rows": result["deleted"],
+            }
+            if metrics is not None:
+                res["metrics"] = metrics
+            return res
 
         if result is None:
             if statement.get("type") == "create_table":
@@ -103,26 +139,32 @@ def execute_parser(scanner, input_path, output_dir=None, persist_ast=True):
             }
 
         if isinstance(result, (dict, str, int, float, bool)) or result is None:
-            return {
+            res = {
                 "statement": statement,
                 "type": statement.get("type"),
                 "result": result,
             }
+            if metrics is not None:
+                res["metrics"] = metrics
+            return res
 
-        return {
+        res = {
             "statement": statement,
             "type": statement.get("type"),
             "result": str(result),
         }
+        if metrics is not None:
+            res["metrics"] = metrics
+        return res
 
     try:
         ast_nodes = parser.parse_program()
 
-        # --- PrintVisitor: reconstruye y muestra el SQL (Codigo) ---
-        print("Codigo:")
-        printer = PrintVisitor()
+        # --- TraceVisitor: muestra SQL + descripcion (debug/traza) ---
+        print("Traza:")
+        tracer = TraceVisitor()
         for node in ast_nodes:
-            node.accept(printer)
+            node.accept(tracer)
 
         # --- DBVisitor: ejecuta realmente contra el motor de BD ---
         print("\nEjecucion:")

@@ -66,16 +66,22 @@ class Parser:
 
         return CreateTableStmt(name=table_name, columns=columns, file_path=file_path)
 
-    # ColDef ::= Id Type [ INDEX IndexTech ]
+    # ColDef ::= Id Type [ PRIMARY KEY ] [ INDEX IndexTech ]
     def parse_column_def(self):
         name = self.expect(TokenType.ID).text
         data_type = self.parse_type_token()
+
+        is_primary_key = False
+        if self.match(TokenType.PRIMARY):
+            self.expect(TokenType.KEY)
+            is_primary_key = True
 
         index = None
         if self.match(TokenType.INDEX):
             index = self.parse_index_technique()
 
-        return ColDef(name=name, data_type=data_type, index=index)
+        return ColDef(name=name, data_type=data_type, index=index,
+                      is_primary_key=is_primary_key)
 
     # SelectStmt ::= SELECT Cols FROM Id [ WHERE Condition ]
     def parse_select(self):

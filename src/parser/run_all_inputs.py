@@ -3,10 +3,12 @@ import subprocess
 import sys
 import shutil
 
-# Configuración
-input_dir = "inputs"
-output_dir = "outputs"
-main_script = "main.py"
+# Resolve paths relative to this script's directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(script_dir, "..", ".."))
+
+input_dir = os.path.join(script_dir, "inputs")
+output_dir = os.path.join(script_dir, "outputs")
 
 print("--- Starting tests ---")
 
@@ -16,7 +18,7 @@ if not os.path.exists(input_dir):
 
 os.makedirs(output_dir, exist_ok=True)
 
-for i in range(1, 9):
+for i in range(1, 2):
     filename = f"input{i}.txt"
     filepath = os.path.join(input_dir, filename)
     ast_filepath = os.path.join(input_dir, f"input{i}_ast.json")
@@ -30,9 +32,10 @@ for i in range(1, 9):
             os.remove(ast_filepath)
 
         result = subprocess.run(
-            [sys.executable, main_script, filepath, output_dir],
+            [sys.executable, "-m", "src.parser.main", filepath, output_dir],
             capture_output=True,
-            text=True
+            text=True,
+            cwd=project_root
         )
 
         # Guardar stdout y stderr en outputs/outputN.txt

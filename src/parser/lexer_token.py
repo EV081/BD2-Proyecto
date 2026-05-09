@@ -20,7 +20,11 @@ class TokenType(Enum):
     FLOAT = auto()
     VARCHAR = auto()
     
-    # Técnicas de Indexación 
+    # Primary Key
+    PRIMARY = auto()     # PRIMARY
+    KEY = auto()         # KEY
+
+    # Técnicas de Indexación
     INDEX = auto()       # INDEX
     SEQUENTIAL = auto()  # SEQUENTIAL
     HASH = auto()        # HASH
@@ -71,6 +75,8 @@ KEYWORDS = {
     "DELETE": TokenType.DELETE,
     "FROM": TokenType.FROM,
     "FILE": TokenType.FILE,
+    "PRIMARY": TokenType.PRIMARY,
+    "KEY": TokenType.KEY,
     "INDEX": TokenType.INDEX,
     "BETWEEN": TokenType.BETWEEN,
     "AND": TokenType.AND,
