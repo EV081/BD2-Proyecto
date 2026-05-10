@@ -5,6 +5,8 @@
 
 ---
 
+Presentación grabada en: [Grabación](https://drive.google.com/file/d/1h8ZmYeeNjYH2g-VXkvrgvBhSr_cELIAv/view?usp=drive_link)
+
 ## 1. Introduccion y Objetivo
 
 ### 1.1 Introduccion
@@ -186,31 +188,31 @@ FUNCTION remove(key):
 
 #### Descripcion
 
-Indice basado en un archivo unico paginado con dos areas:
-- **Area principal (main)**: paginas contiguas con entries ordenadas por clave. Busqueda binaria sobre paginas (O(log P)).
-- **Area auxiliar (aux)**: paginas de overflow para nuevas inserciones, ordenadas dentro de cada pagina, encadenadas via linked list.
+El Sequential File se organiza en un unico archivo paginado con dos zonas bien diferenciadas:
+- **Area principal (main)**: contiene paginas contiguas con entradas ordenadas por clave. Esto permite hacer busqueda binaria sobre paginas y mantener un acceso eficiente.
+- **Area auxiliar (aux)**: actua como zona de overflow para inserciones recientes. Sus paginas tambien mantienen orden local y se enlazan como una lista.
 
-Cuando el area auxiliar alcanza `max_aux` entries, se ejecuta una **reconstruccion** que fusiona ambas areas en paginas main ordenadas.
+Cuando el area auxiliar alcanza `max_aux` entradas, el sistema ejecuta una **reconstruccion** para fusionar ambas zonas y volver a dejar las paginas main ordenadas.
 
-Soporta dos modos de operacion:
-- **Clustered**: almacena registros completos (el SF es el almacenamiento primario).
-- **Index**: almacena pares (key, RID) como indice secundario apuntando al HeapFile.
+El indice puede trabajar en dos modos:
+- **Clustered**: almacena el registro completo y actua como almacenamiento primario.
+- **Index**: almacena pares `(key, RID)` y funciona como indice secundario sobre el HeapFile.
 
 #### Estructura en disco
 
 - Archivo unico: `indexes/{tabla}_{columna}.idx`
-- **Pagina 0 — Metadata (28B)**:
+- **Pagina 0 - Metadata (28B)**:
   ```
   num_main(4) + num_aux(4) + head_page(4) + num_pages(4)
   + max_aux(4) + first_aux(4) + num_deleted(4)
   ```
-- **Data pages — Header (8B)**: `num_entries(4) + next_page(4)`
+- **Data pages - Header (8B)**: `num_entries(4) + next_page(4)`
 - **Entry**: `key(K) + value(V)` (registro completo en clustered, RID en index)
-- Entries por pagina: `(4096 - 8) / entry_size`
+- Entradas por pagina: `(4096 - 8) / entry_size`
 
 #### Algoritmo: Busqueda (search)
 
-Despues de una reconstruccion, las main pages son contiguas `[head_page, head_page + N - 1]`. Esto permite busqueda binaria sobre los numeros de pagina:
+Despues de una reconstruccion, las paginas main quedan contiguas en el rango `[head_page, head_page + N - 1]`. Eso permite hacer busqueda binaria usando directamente los numeros de pagina:
 
 ```
 FUNCTION search(key):
@@ -573,23 +575,39 @@ La mascara `(1 << global_depth) - 1` extrae los `global_depth` bits menos signif
 
 #### Diagrama
 
-```
-global_depth = 2
-directory (4 entradas):          Buckets en disco:
-  00 -> Bucket A (local_depth=2): [4,8,12]     -- pag 1
-  01 -> Bucket B (local_depth=2): [1,5,9]      -- pag 2
-  10 -> Bucket C (local_depth=2): [2,6,10]     -- pag 3
-  11 -> Bucket D (local_depth=2): [3,7,11]     -- pag 4
+```mermaid
+flowchart TB
+    GD[global_depth = 2]
 
-search(key=5):
-  hash(5) AND 0b11 = 01 -> directory[1] -> Bucket B -> scan [1,5,9] -> FOUND
+    subgraph DIR [Directory - 4 entries]
+        D00["00 -> Bucket A
+        local_depth = 2
+        [4, 8, 12]"]
+        D01["01 -> Bucket B
+        local_depth = 2
+        [1, 5, 9]"]
+        D10["10 -> Bucket C
+        local_depth = 2
+        [2, 6, 10]"]
+        D11["11 -> Bucket D
+        local_depth = 2
+        [3, 7, 11]"]
+    end
 
-Insertar 16 (hash=00, bucket A lleno):
-  -> local_depth(2) == global_depth(2): duplicar directorio (4 -> 8 entradas)
-  -> global_depth = 3
-  -> new_local = 3
-  -> redistribuir por bit 2: entries con bit=0 quedan, bit=1 van al nuevo bucket
-  -> actualizar entradas del directorio que apuntaban a bucket A
+    GD --> DIR
+
+    Q["search(key = 5)"] --> H["hash(5) AND 0b11 = 01"]
+    H --> D01
+    D01 --> F["Scan bucket B and find 5"]
+
+    I["insert key = 16
+    (hash = 00)"] --> A["Bucket A full"]
+    A --> C{"local_depth == global_depth?"}
+    C -- yes --> U["Duplicate directory
+    4 -> 8 entries"]
+    U --> GD3["global_depth = 3"]
+    GD3 --> R["Redistribute entries by bit 2"]
+    R --> N["Update directory pointers for Bucket A"]
 ```
 
 ---
@@ -1072,17 +1090,46 @@ El sistema implementa **Strict Two-Phase Locking (S2PL)** con bloqueos a nivel d
 
 Se usa un **grafo wait-for** con deteccion de ciclos via BFS:
 
+```mermaid
+sequenceDiagram
+    participant TX1
+    participant DB as Recurso (Page 0 & 1)
+    participant TX2
+
+    Note over TX1, TX2: Paso 1: Adquisición inicial de Locks
+    TX1->>DB: X-lock en Page 0 (Concedido)
+    TX2->>DB: X-lock en Page 1 (Concedido)
+
+    Note over TX1, TX2: Paso 2: Peticiones cruzadas (Bloqueo)
+    TX1->>DB: Solicita X-lock en Page 1
+    DB-->>TX1: Esperando a TX2...
+    
+    TX2->>DB: Solicita X-lock en Page 0
+    DB-->>TX2: Esperando a TX1...
+
+    Note over TX1, TX2: ¡DEADLOCK DETECTADO!
+
+    Note over TX1, TX2: Paso 3: Resolución (TX2 elegida como víctima)
+    TX2->>TX2: DeadlockError & ABORT
+    TX2->>DB: Libera X-lock en Page 1
+    DB-->>TX1: X-lock en Page 1 (Concedido)
+    Note over TX1: TX1 continúa
 ```
-TX1 tiene X-lock en Page 0
-TX2 tiene X-lock en Page 1
-TX1 quiere X-lock en Page 1 -> espera TX2
-TX2 quiere X-lock en Page 0 -> espera TX1
 
-Grafo wait-for:
-  TX1 -> TX2 -> TX1   (CICLO DETECTADO)
+```mermaid
+graph LR
+    subgraph Wait_For_Graph [Grafo de Espera]
+        T1((TX1))
+        T2((TX2))
 
-Resolucion: TX victima recibe DeadlockError y hace ABORT,
-            liberando todos sus locks.
+        T1 -- "espera lock en Page 1" --> T2
+        T2 -- "espera lock en Page 0" --> T1
+    end
+
+    style T1 fill:#f9f,stroke:#333
+    style T2 fill:#fff,stroke:#f66,stroke-dasharray: 5 5
+    
+    linkStyle 0,1 stroke:#ff0000,stroke-width:2px;
 ```
 
 ### 6.3 Reporte de conflictos
