@@ -671,32 +671,41 @@ FUNCTION knn_search(qx, qy, k):
 ![RTree](docs/img/diagramartree.png)
 ---
 
-### 2.5 External Sort — TPMMS (`external_sort.py`)
+### 2.5 External Sort — TPMMS
 
-#### Descripcion
+#### Descripción
 
-Two-Pass Multiway Merge Sort para ordenar tablas que no caben en memoria. Opera en dos fases con I/O por paginas completas. Se activa con la clausula `ORDER BY` del SQL.
+External Sort, también conocido como TPMMS (*Two-Phase Multiway Merge Sort*), es un algoritmo de ordenamiento externo utilizado para ordenar tablas que no caben completamente en memoria principal. En el proyecto se activa cuando una consulta SQL incluye la cláusula `ORDER BY`.
+
+A diferencia de un ordenamiento en memoria, este algoritmo trabaja sobre páginas completas de disco. La tabla se lee por bloques, se generan archivos temporales ordenados llamados *runs*, y luego estos runs se fusionan hasta producir el resultado final ordenado. El heap original no se modifica.
 
 #### Algoritmo
 
 ```
 FUNCTION external_sort(db, sort_column, buffer_size):
-    -- FASE 1: Generacion de runs
     B = buffer_size / page_size
+
+    -- FASE 1: Generación de runs
     FOR each group of B pages in heap:
-        read B pages into memory                -- B lecturas
+        read B pages into memory
         sort records by sort_column in RAM
-        write sorted run to temp file           -- B escrituras
+        write sorted run to temporary file
 
     -- FASE 2: Multiway merge
     max_streams = B - 1
-    WHILE num_runs > max_streams:
+
+    WHILE number of runs > max_streams:
         merge groups of max_streams runs
-    -- Final merge con min-heap:
-        heap = [(key, run_idx, record) for first record of each run]
-        WHILE heap not empty:
-            pop minimum, write to output
-            push next from same run
+        write intermediate sorted runs
+
+    -- Final merge
+    initialize min-heap with first record of each active run
+
+    WHILE heap is not empty:
+        pop minimum record
+        write record to output
+        push next record from the same run
+
     RETURN sorted records
 ```
 
@@ -969,22 +978,50 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 | 10,000 | 0.28 ms | 0.24 ms | N/A |
 | 100,000 | 2.12 ms | **0.58 ms** | N/A |
 
-### 5.5 Discusion de resultados
+### 5.5 Discusión de resultados
 
-1. **Extendible Hashing** domina en busqueda puntual: **2 accesos constantes** independiente de N. Su costo por insercion es tambien el mas bajo (~5 paginas/registro). Sin embargo, no soporta rangos — una busqueda por rango requiere full scan (100K accesos para N=100K).
+#### 1. Extendible Hashing
 
-2. **B+ Tree** ofrece el mejor balance general:
-   - Busqueda puntual en O(log N): 3-4 accesos para 100K registros.
-   - Busqueda por rango eficiente: recorre solo las hojas del rango via `next_leaf`.
-   - Insercion estable: ~6 accesos/registro independiente de N.
-   - Es la opcion por defecto para primary keys.
+Extendible Hashing domina en inserción, el costo por registro se mantiene alrededor de **5 accesos**, lo que confirma que una inserción individual tiene costo promedio cercano a **O(1)**. Sin embargo, cuando se insertan `n` registros, el costo total crece de forma lineal, porque se ejecutan `n` inserciones.
 
-3. **Sequential File** tiene un comportamiento interesante:
-   - **Ventaja en rangos**: gracias a la localidad espacial de las paginas contiguas (17 accesos vs 341 del B+ Tree para N=100K, span=500). Los datos estan fisicamente ordenados, por lo que un rango requiere leer pocas paginas contiguas.
-   - **Desventaja en insercion**: las reconstrucciones periodicas generan un costo cuadratico. Con N=100K, el costo por registro sube a 81.5 accesos (vs 6.2 del B+ Tree).
-   - La busqueda binaria sobre paginas contiguas mantiene la busqueda puntual en O(log P): 9.24 accesos para 100K.
+ En búsquedas puntuales también presenta el mejor resultado, ya que mantiene **2 accesos a disco constantes** independientemente del tamaño del dataset. Esto ocurre porque la estructura calcula el hash de la clave, accede al directorio y lee directamente el bucket correspondiente. Por ello, no necesita recorrer páginas ordenadas ni descender por un árbol.
 
-4. **Trade-off insercion vs consulta**: El Sequential File sacrifica rendimiento de insercion a cambio de excelente localidad de datos para rangos. En escenarios de carga masiva seguida de consultas (OLAP), esto puede ser ventajoso.
+Su principal limitación aparece en las búsquedas por rango. Al aplicar una función hash, se pierde el orden natural de las claves. Por eso, una consulta de este estilo no puede ubicarse en un punto inicial y avanzar secuencialmente. Para resolverla, tendría que revisar todos los buckets y filtrar las claves que caen dentro del rango, lo que equivale a un full scan.
+
+---
+
+#### 2. B+ Tree
+
+B+ Tree ofrece el mejor balance general entre operaciones. En inserción también se mantiene estable. El costo por registro aumenta ligeramente conforme crece `N`, pero no se dispara. Esto se debe a que una inserción requiere ubicar la hoja correcta y, en algunos casos, realizar splits que pueden propagarse hacia los niveles superiores. Aun así, como la altura del árbol crece lentamente, el costo se mantiene bajo.
+
+En búsqueda puntual mantiene un comportamiento logarítmico, porque debe descender desde la raíz hasta la hoja correspondiente. En los resultados, su costo crece de manera controlada conforme aumenta el tamaño del dataset, lo cual es consistente con una estructura balanceada de alto fanout.
+
+
+B+ Tree también soporta búsquedas por rango gracias a que sus hojas están enlazadas mediante `next_leaf`. Sin embargo, al ser un índice no agrupado, las claves pueden estar ordenadas en el índice, pero los registros reales pueden estar dispersos en el heap. Por eso, para rangos grandes, puede requerir más accesos que un Sequential File.
+
+---
+
+#### 3. Sequential File
+
+Sequential File tiene un comportamiento más especializado. Su mayor ventaja aparece en las búsquedas por rango, porque los registros se mantienen físicamente ordenados en páginas contiguas. Esto permite ubicar la primera página del rango y luego leer secuencialmente pocas páginas consecutivas, aprovechando la localidad espacial.
+
+Por eso, en consultas por rango, Sequential File supera ampliamente a B+ Tree. Mientras B+ Tree debe recorrer hojas enlazadas y luego acceder a registros que pueden estar dispersos en el heap, Sequential File puede leer páginas contiguas donde los registros ya están ordenados físicamente.
+
+Su desventaja aparece en inserciones masivas. Aunque las nuevas inserciones se colocan inicialmente en un área auxiliar, cuando esta llega a cierto límite se debe reconstruir el archivo principal. Esa reconstrucción periódica incrementa significativamente el costo de inserción conforme crece el dataset.
+
+En búsqueda puntual, Sequential File realiza búsqueda binaria sobre el área principal ordenada, pero también debe considerar el área auxiliar. Por eso su costo crece más que el de Extendible Hashing, aunque sigue siendo razonable y consistente con un comportamiento logarítmico sobre páginas principales.
+
+---
+
+#### 4. Comparación general
+
+Los resultados muestran que no existe una estructura universalmente mejor. Cada una destaca según el tipo de operación.
+
+Extendible Hashing es la mejor opción para búsquedas exactas e inserciones frecuentes, porque accede directamente al bucket mediante hash y mantiene un costo promedio constante por operación. Su principal limitación es que no conserva orden, por lo que no es adecuada para búsquedas por rango.
+
+Sequential File es superior para consultas por rango, ya que mantiene los datos físicamente ordenados y aprovecha páginas contiguas. Sin embargo, paga ese beneficio con un mayor costo de inserción debido a las reconstrucciones periódicas.
+
+B+ Tree es la alternativa más versátil. No siempre gana en una operación específica, pero ofrece un rendimiento estable para búsqueda puntual, búsqueda por rango, inserción y eliminación. Por eso funciona bien como estructura general y como índice por defecto para claves primarias.
 
 ---
 
