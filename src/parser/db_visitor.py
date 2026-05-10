@@ -1,13 +1,3 @@
-"""
-DBVisitor — Ejecuta sentencias SQL sobre el motor de base de datos (dbengine).
-
-Conecta el parser SQL con el DBMS:
-  CREATE TABLE  → DataBase(...) + create_index(...)
-  SELECT        → select / select_range / select_radius / select_knn
-  INSERT        → insert
-  DELETE        → delete
-"""
-
 import os
 import csv
 import time
@@ -36,7 +26,6 @@ INDEX_MAP = {
 
 
 def _map_type(parser_type):
-    """Convierte tipo del parser a tipo del dbengine."""
     upper = parser_type.upper()
     if upper in TYPE_MAP:
         return TYPE_MAP[upper]
@@ -59,13 +48,11 @@ class DBVisitor(Visitor):
 
     @staticmethod
     def _print_metrics(m):
-        """Imprime metricas de I/O y tiempo."""
         print(f"  Metricas: {m['time_ms']:.3f} ms | "
               f"Reads: {m['total_reads']} (heap={m['heap_reads']}, idx={m['index_reads']}) | "
               f"Writes: {m['total_writes']} (heap={m['heap_writes']}, idx={m['index_writes']})")
 
     def _get_table(self, name):
-        """Retorna la instancia DataBase para una tabla (carga si es necesario)."""
         if name not in self.tables:
             try:
                 db = DataBase(name)
@@ -75,11 +62,9 @@ class DBVisitor(Visitor):
         return self.tables[name]
 
     def _col_names(self, db):
-        """Retorna lista de nombres de columnas."""
         return list(db.schema.keys())
 
     def _format_results(self, db, records, columns=None):
-        """Formatea registros para impresion."""
         col_names = self._col_names(db)
 
         # Filtrar columnas si se especificaron
@@ -187,7 +172,6 @@ class DBVisitor(Visitor):
         return {"metrics": m}
 
     def _load_from_file(self, db, node):
-        """Carga datos desde un archivo CSV ubicado en uploaded_files/."""
         # Ruta absoluta a uploaded_files/ en la raiz del proyecto
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
         uploaded_dir = os.path.join(project_root, "uploaded_files")
@@ -300,12 +284,6 @@ class DBVisitor(Visitor):
                     "total_writes": sort_stats["pages_written"],
                 }
 
-        elif node.where is None:
-            records, m = db.select_all(metrics=True)
-
-        else:
-            records, m = node.where.accept(self._SelectExecutor(db))
-          
         self.last_metrics = m
         col_names, records = self._format_results(db, records, node.columns)
 

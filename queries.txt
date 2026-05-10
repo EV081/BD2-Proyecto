@@ -8,12 +8,11 @@ country_code VARCHAR,
 country_name VARCHAR,
 latitude FLOAT,
 longitude FLOAT,
-wikiDataId VARCHAR) FROM FILE "cities_1k.csv"
+wikiDataId VARCHAR) FROM FILE "cities_10k.csv"
 
-
-
-CREATE TABLE cities (id INT PRIMARY KEY, name VARCHAR(40), ubicacion POINT INDEX RTREE) FROM
-  FILE "cities_1k_rtree.csv"
+SELECT * FROM Ciudades WHERE id = 6218
 
 SELECT * FROM cities WHERE ubicacion IN (POINT(48.85, 2.35), RADIUS 2.0)
 SELECT * FROM cities WHERE ubicacion IN (POINT(48.85, 2.35), K 5)
+
+SELECT * FROM cities_500k ORDER BY id

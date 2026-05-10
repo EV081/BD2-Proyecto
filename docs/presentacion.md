@@ -22,7 +22,7 @@ Universidad de Ingenieria y Tecnologia (UTEC)
 
 # Arquitectura General
 
-![w:700px h:500px](/home/vssz/UTEC/5to/bd2/BD2-Proyecto/docs/img/ArquitecturaGeneral.jpeg)
+![w:700px h:500px](img/ArquitecturaGeneral.jpeg)
 
 
 ---
@@ -72,26 +72,6 @@ Texto SQL -> [Scanner] -> Tokens -> [Parser] -> AST -> [DBVisitor] -> Ejecucion
 
 ---
 
-# Parser — Manejo de PRIMARY KEY
-
-```sql
-CREATE TABLE empleados (
-    id INT PRIMARY KEY,
-    salario FLOAT INDEX HASH,
-    ubicacion POINT INDEX RTREE
-);
-```
-
-El parser detecta `PRIMARY KEY` en la definicion de columna:
-
-1. Marca la columna como clave primaria en el schema
-2. Se crea automaticamente un **B+ Tree** sobre esa columna (indice por defecto para PK)
-3. Todas las operaciones de busqueda por PK usan ese indice
-4. Si en vez de `PRIMARY KEY` se usa `INDEX SEQUENTIAL`, la columna se vuelve PK **clustered** (el Sequential File almacena los registros ordenados)
-
-`PRIMARY KEY` garantiza **unicidad**: inserciones duplicadas actualizan el registro existente en vez de insertar uno nuevo.
-
----
 <!-- _class: section -->
 
 # 3. Clustered vs Unclustered
