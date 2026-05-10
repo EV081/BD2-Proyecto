@@ -219,6 +219,7 @@ function normalizeRemoteQuery(response: RemoteQueryResponse): Db2ExecuteQueryRes
               table: String(result.statement.table ?? ""),
               columns: Array.isArray(result.statement.columns) ? (result.statement.columns as string[]) : "*",
               where: null,
+                orderBy: null,
             }
           : statementType === "create_table"
             ? {

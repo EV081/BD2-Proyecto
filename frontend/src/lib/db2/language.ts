@@ -4,6 +4,10 @@ export const DB2_KEYWORDS = [
   "SELECT",
   "FROM",
   "WHERE",
+  "ORDER",
+  "BY",
+  "ASC",
+  "DESC",
   "INSERT",
   "INTO",
   "VALUES",
@@ -44,6 +48,11 @@ export const DB2_LANGUAGE_SNIPPETS = [
     label: "SELECT list FROM ...",
     detail: "Select a column list from a table",
     insertText: "SELECT ${1:column1}, ${2:column2} FROM ${3:table} WHERE ${4:column} <= ${5:value};",
+  },
+  {
+    label: "SELECT ... ORDER BY ...",
+    detail: "Select rows ordered by a column",
+    insertText: "SELECT * FROM ${1:table} ORDER BY ${2:column} ${3:ASC};",
   },
   {
     label: "CREATE TABLE ...",

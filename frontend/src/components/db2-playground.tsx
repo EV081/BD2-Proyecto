@@ -76,7 +76,7 @@ function configureDb2Language(monaco: Parameters<BeforeMount>[0]) {
         [/[;,.]/, "delimiter"],
         [/\(|\)/, "delimiter.parenthesis"],
         [/\b(?:INT|FLOAT|VARCHAR|POINT)\b/i, "type"],
-        [/\b(?:CREATE|TABLE|SELECT|FROM|WHERE|INSERT|INTO|VALUES|DELETE|FILE|INDEX|SEQUENTIAL|HASH|BTREE|RTREE|BETWEEN|AND|IN|POINT|RADIUS|K|DEFAULT_INDEX|PRIMARY|KEY)\b/i, "keyword"],
+        [/\b(?:CREATE|TABLE|SELECT|FROM|WHERE|ORDER|BY|ASC|DESC|INSERT|INTO|VALUES|DELETE|FILE|INDEX|SEQUENTIAL|HASH|BTREE|RTREE|BETWEEN|AND|IN|POINT|RADIUS|K|DEFAULT_INDEX|PRIMARY|KEY)\b/i, "keyword"],
         [/<=|>=|!=|=|<|>/, "operator"],
         [/\b\d+(?:\.\d+)?\b/, "number"],
         [/"([^"\\]|\\.)*"/, "string"],
@@ -794,9 +794,12 @@ function renderAstSummary(statement: Db2Statement | null): string {
 
   if (statement.type === "Select") {
     const columnsText = statement.columns === "*" ? "*" : statement.columns.join(", ");
-    return statement.where
-      ? `SELECT ${columnsText} FROM ${statement.table} with ${statement.where.type.toLowerCase()} predicate.`
-      : `SELECT ${columnsText} FROM ${statement.table} without a WHERE clause.`;
+    const whereText = statement.where ? ` with ${statement.where.type.toLowerCase()} predicate` : " without a WHERE clause";
+    const orderText = statement.orderBy
+      ? ` ordered by ${statement.orderBy.column} ${statement.orderBy.direction}`
+      : "";
+
+    return `SELECT ${columnsText} FROM ${statement.table}${whereText}${orderText}.`;
   }
 
   if (statement.type === "CreateTable") {

@@ -96,10 +96,29 @@ class Db2Parser {
     const columns = this.parseSelectColumns();
     this.consumeKeyword("FROM", "Expected FROM after SELECT columns.");
     const table = this.consumeIdentifier("Expected a table name after FROM.");
-    this.consumeKeyword("WHERE", "Expected WHERE in SELECT statement.");
-    const where = this.parseWhereCondition();
 
-    return { type: "Select", columns, table, where };
+    let where: Db2WhereCondition | null = null;
+    let orderBy: { column: string; direction: "ASC" | "DESC" } | null = null;
+
+    if (this.matchKeyword("WHERE")) {
+      where = this.parseWhereCondition();
+    }
+
+    if (this.matchKeyword("ORDER")) {
+      this.consumeKeyword("BY", "Expected BY after ORDER.");
+      const column = this.consumeIdentifier("Expected a column name after ORDER BY.");
+      let direction: "ASC" | "DESC" = "ASC";
+
+      if (this.matchKeyword("ASC")) {
+        direction = "ASC";
+      } else if (this.matchKeyword("DESC")) {
+        direction = "DESC";
+      }
+
+      orderBy = { column, direction };
+    }
+
+    return { type: "Select", columns, table, where, orderBy };
   }
 
   private parseSelectColumns(): "*" | string[] {

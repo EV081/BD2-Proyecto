@@ -140,6 +140,29 @@ function projectRow(row: Db2Row, columns: "*" | string[]): Db2Row {
   }, {});
 }
 
+function compareOrderedValues(left: Db2Scalar, right: Db2Scalar): number {
+  if (left === right) {
+    return 0;
+  }
+
+  if (left === null) {
+    return 1;
+  }
+
+  if (right === null) {
+    return -1;
+  }
+
+  const leftNumber = toNumber(left);
+  const rightNumber = toNumber(right);
+
+  if (leftNumber !== null && rightNumber !== null) {
+    return leftNumber - rightNumber;
+  }
+
+  return String(left).localeCompare(String(right), undefined, { sensitivity: "base", numeric: true });
+}
+
 function executeStatement(statement: Db2Statement, catalog: Db2Table[]): {
   result: Db2StatementExecutionResult;
   catalog: Db2Table[];
@@ -159,8 +182,15 @@ function executeStatement(statement: Db2Statement, catalog: Db2Table[]): {
       };
     }
 
-    const rows = table.rows.filter((row) => (statement.where ? matchesWhere(row, statement.where) : true));
-    const projectedRows = rows.map((row) => projectRow(row, statement.columns));
+    const filteredRows = table.rows.filter((row) => (statement.where ? matchesWhere(row, statement.where) : true));
+    const orderBy = statement.orderBy;
+    const orderedRows = orderBy
+      ? [...filteredRows].sort((leftRow, rightRow) => {
+          const comparison = compareOrderedValues(leftRow[orderBy.column], rightRow[orderBy.column]);
+          return orderBy.direction === "DESC" ? -comparison : comparison;
+        })
+      : filteredRows;
+    const projectedRows = orderedRows.map((row) => projectRow(row, statement.columns));
 
     return {
       catalog,

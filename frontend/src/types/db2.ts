@@ -72,6 +72,12 @@ export type Db2Statement =
       columns: "*" | string[];
       table: string;
       where: Db2WhereCondition | null;
+      orderBy:
+        | {
+            column: string;
+            direction: "ASC" | "DESC";
+          }
+        | null;
     }
   | {
       type: "CreateTable";
