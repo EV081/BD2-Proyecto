@@ -281,21 +281,31 @@ class DBVisitor(Visitor):
             records, m = node.where.accept(self._SelectExecutor(db))
 
         if getattr(node, 'order_by', None):
-            sorted_records, sort_stats = external_sort(db, node.order_by)
-            records = [db._clean_record(r) for r in sorted_records]
+                sorted_records, sort_stats = external_sort(db, node.order_by)
+                records = [db._clean_record(r) for r in sorted_records]
 
-            # Imprimir métricas de cada fase por separado
-            print(f"  [TPMMS - Fase 1] reads={sort_stats['pages_read_p1']} | writes={sort_stats['pages_written_p1']} | time={sort_stats['time_phase1_sec']}s")
-            print(f"  [TPMMS - Fase 2] reads={sort_stats['pages_read_p2']} | writes={sort_stats['pages_written_p2']} | time={sort_stats['time_phase2_sec']}s")
-            print(f"  [TPMMS - Total]  runs={sort_stats['runs_generated']} | io_total={sort_stats['io_total']} | time={sort_stats['time_total_sec']}s")
+                # Imprimir métricas de cada fase por separado
+                print(f"  [TPMMS - Fase 1] reads={sort_stats['pages_read_p1']} | writes={sort_stats['pages_written_p1']} | time={sort_stats['time_phase1_sec']}s")
+                print(f"  [TPMMS - Fase 2] reads={sort_stats['pages_read_p2']} | writes={sort_stats['pages_written_p2']} | time={sort_stats['time_phase2_sec']}s")
+                print(f"  [TPMMS - Total]  runs={sort_stats['runs_generated']} | io_total={sort_stats['io_total']} | time={sort_stats['time_total_sec']}s")
 
-            # Combinar métricas del select_all con las del sort
-            m['heap_reads']   += sort_stats['pages_read']
-            m['heap_writes']  += sort_stats['pages_written']
-            m['total_reads']  += sort_stats['pages_read']
-            m['total_writes'] += sort_stats['pages_written']
-            m['time_ms']      += sort_stats['time_total_sec'] * 1000
+                # Métricas solo del external sort, sin select_all previo
+                m = {
+                    "time_ms": sort_stats["time_total_sec"] * 1000,
+                    "heap_reads": sort_stats["pages_read"],
+                    "heap_writes": sort_stats["pages_written"],
+                    "index_reads": 0,
+                    "index_writes": 0,
+                    "total_reads": sort_stats["pages_read"],
+                    "total_writes": sort_stats["pages_written"],
+                }
 
+        elif node.where is None:
+            records, m = db.select_all(metrics=True)
+
+        else:
+            records, m = node.where.accept(self._SelectExecutor(db))
+          
         self.last_metrics = m
         col_names, records = self._format_results(db, records, node.columns)
 
