@@ -1121,17 +1121,46 @@ El sistema implementa **Strict Two-Phase Locking (S2PL)** con bloqueos a nivel d
 
 Se usa un **grafo wait-for** con deteccion de ciclos via BFS:
 
+```mermaid
+sequenceDiagram
+    participant TX1
+    participant DB as Recurso (Page 0 & 1)
+    participant TX2
+
+    Note over TX1, TX2: Paso 1: Adquisición inicial de Locks
+    TX1->>DB: X-lock en Page 0 (Concedido)
+    TX2->>DB: X-lock en Page 1 (Concedido)
+
+    Note over TX1, TX2: Paso 2: Peticiones cruzadas (Bloqueo)
+    TX1->>DB: Solicita X-lock en Page 1
+    DB-->>TX1: Esperando a TX2...
+    
+    TX2->>DB: Solicita X-lock en Page 0
+    DB-->>TX2: Esperando a TX1...
+
+    Note Red over TX1, TX2: ¡DEADLOCK DETECTADO!
+
+    Note over TX1, TX2: Paso 3: Resolución (TX2 elegida como víctima)
+    TX2->>TX2: DeadlockError & ABORT
+    TX2->>DB: Libera X-lock en Page 1
+    DB-->>TX1: X-lock en Page 1 (Concedido)
+    Note success over TX1: TX1 continúa
 ```
-TX1 tiene X-lock en Page 0
-TX2 tiene X-lock en Page 1
-TX1 quiere X-lock en Page 1 -> espera TX2
-TX2 quiere X-lock en Page 0 -> espera TX1
 
-Grafo wait-for:
-  TX1 -> TX2 -> TX1   (CICLO DETECTADO)
+```mermaid
+graph LR
+    subgraph Wait_For_Graph [Grafo de Espera]
+        T1((TX1))
+        T2((TX2))
 
-Resolucion: TX victima recibe DeadlockError y hace ABORT,
-            liberando todos sus locks.
+        T1 -- "espera lock en Page 1" --> T2
+        T2 -- "espera lock en Page 0" --> T1
+    end
+
+    style T1 fill:#f9f,stroke:#333
+    style T2 fill:#fff,stroke:#f66,stroke-dasharray: 5 5
+    
+    linkStyle 0,1 stroke:#ff0000,stroke-width:2px;
 ```
 
 ### 6.3 Reporte de conflictos
