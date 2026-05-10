@@ -5,7 +5,7 @@
 
 ---
 
-Presntación grabada en: [Grabación](https://drive.google.com/file/d/1h8ZmYeeNjYH2g-VXkvrgvBhSr_cELIAv/view?usp=drive_link)
+Presentación grabada en: [Grabación](https://drive.google.com/file/d/1h8ZmYeeNjYH2g-VXkvrgvBhSr_cELIAv/view?usp=drive_link)
 
 ## 1. Introduccion y Objetivo
 
