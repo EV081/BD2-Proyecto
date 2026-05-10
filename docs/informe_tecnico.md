@@ -77,9 +77,7 @@ El flujo de ejecucion sigue el patron:
 
 ### 2.1 B+ Tree (`bplus.py`)
 
-#### Descripcion
-
-Arbol balanceado donde todos los datos (RIDs) se almacenan en las hojas. Los nodos internos contienen solo claves separadoras y punteros a hijos. Las hojas estan encadenadas via punteros `next_leaf` para recorridos secuenciales eficientes.
+Es un árbol balanceado donde todos los datos (RIDs) se almacenan en las hojas. Los nodos internos contienen solo claves separadoras y punteros a hijos. Las hojas estan encadenadas via punteros `next_leaf` para recorridos secuenciales eficientes.
 
 #### Estructura en disco
 
@@ -88,7 +86,7 @@ Arbol balanceado donde todos los datos (RIDs) se almacenan en las hojas. Los nod
 - **Paginas 1..N**: nodos del arbol
 - Cada pagina = 4096 bytes
 - Header de nodo (9B): `is_leaf(1) + num_keys(4) + next_leaf(4)`
-- Orden M: `max_keys = min((P-9-4)/(K+4), (P-9)/(K+8))` donde P=4096, K=tamanio de clave
+- Orden M: `max_keys = min((P-9-4)/(K+4), (P-9)/(K+8))` donde P=4096, K=tamaño de clave
 
 Para claves `int` (4 bytes): max_keys = 340, min_keys = 170.
 
@@ -96,13 +94,14 @@ Para claves `int` (4 bytes): max_keys = 340, min_keys = 170.
 
 ```
 FUNCTION search(key):
-    IF root == NULL: RETURN NULL
+    IF root == NULL: 
+        RETURN NULL
     node = read_node(root)
     WHILE node is not leaf:
         i = 0
         WHILE i < len(node.keys) AND key >= node.keys[i]:
             i = i + 1
-        node = read_node(node.children[i])    -- 1 lectura de pagina
+        node = read_node(node.children[i])    //1 lectura de pagina
     FOR i IN 0..len(node.keys):
         IF node.keys[i] == key:
             RETURN node.values[i]
@@ -111,9 +110,9 @@ FUNCTION search(key):
     RETURN NULL
 ```
 
-**Costo**: O(log_M(N)) lecturas de pagina, donde M = orden del arbol. Para 100K registros con M=340, la altura es 2-3 niveles = 3-4 accesos.
+**Costo**: O(log_M(N)) lecturas de pagina, donde M = orden del árbol. Para 100K registros con M=340, la altura es 2-3 niveles = 3-4 accesos.
 
-#### Algoritmo: Insercion
+#### Algoritmo: Inserción
 
 ```
 FUNCTION add(key, value):
@@ -123,9 +122,9 @@ FUNCTION add(key, value):
     leaf, path = find_leaf(key)
     insert (key, value) in leaf at sorted position
     IF len(leaf.keys) <= max_keys:
-        write_node(leaf)                       -- 1 escritura
+        write_node(leaf)                       // 1 escritura
     ELSE:
-        split_leaf(leaf, path)                 -- 2-3 escrituras
+        split_leaf(leaf, path)                 // 2-3 escrituras
 
 FUNCTION split_leaf(node, path):
     mid = len(node.keys) / 2
@@ -142,17 +141,17 @@ FUNCTION split_leaf(node, path):
 
 ```
 FUNCTION range_search(begin, end):
-    leaf = find_leaf(begin)                    -- O(log_M(N)) lecturas
+    leaf = find_leaf(begin)                    // O(log_M(N)) lecturas
     results = []
     WHILE leaf != NULL:
         FOR (k, v) IN leaf.entries:
             IF k > end: RETURN results
             IF k >= begin: results.append(v)
-        leaf = read_node(leaf.next_leaf)       -- 1 lectura por hoja
+        leaf = read_node(leaf.next_leaf)       // 1 lectura por hoja
     RETURN results
 ```
 
-**Costo**: O(log_M(N) + R/M) donde R = numero de resultados.
+**Costo**: O(log_M(N) + R/M) donde R = número de resultados.
 
 #### Algoritmo: Eliminacion
 
@@ -160,36 +159,26 @@ FUNCTION range_search(begin, end):
 FUNCTION remove(key):
     leaf, path = find_leaf(key)
     idx = find key in leaf
-    IF idx == NULL: RETURN FALSE
+    IF idx == NULL: 
+        RETURN FALSE
     remove leaf.keys[idx] and leaf.values[idx]
     IF leaf is root OR len(leaf.keys) >= min_keys:
         write_node(leaf)
     ELSE:
-        handle_underflow(leaf, path)           -- borrow or merge
+        handle_underflow(leaf, path)           // borrow or merge
     RETURN TRUE
 ```
 
-#### Consideraciones de implementacion
+#### Consideraciones de implementación
 
-- **Paginas de tamanio fijo (4096B)**: Cada nodo ocupa exactamente una pagina. El header de nodo (9B: `is_leaf(1) + num_keys(4) + next_leaf(4)`) reduce el espacio util a 4087B. El orden M se calcula en funcion del tamanio de clave K: para INT (K=4B), M=340 claves por nodo.
-- **Busqueda por rango via hojas encadenadas**: Las hojas mantienen un puntero `next_leaf` que encadena todas las hojas de izquierda a derecha. `range_search(begin, end)` ubica la hoja de `begin` en O(log_M(N)) y luego recorre las hojas encadenadas hasta superar `end`. Solo se leen las hojas del rango, no todo el arbol.
+- **Páginas de tamaño fijo (4096B)**: Cada nodo ocupa exactamente una página. El header del nodo (9B: `is_leaf(1) + num_keys(4) + next_leaf(4)`) reduce el espacio útil a 4087B. El orden M se calcula en función del tamaño de la clave K: para INT (K=4B), M=340 claves por nodo.
+- **Busqueda por rango via hojas encadenadas**: Las hojas mantienen un puntero `next_leaf` que encadena todas las hojas de izquierda a derecha. `range_search(begin, end)` ubica la hoja de `begin` en O(log_M(N)) y luego recorre las hojas encadenadas hasta superar `end`. Solo se leen las hojas del rango, no todo el árbol.
 - **Split de nodos**: Cuando una hoja supera M claves, se divide en dos: la mitad izquierda se queda, la derecha va a un nuevo nodo. La clave separadora sube al padre. Si el padre tambien se desborda, el split se propaga hacia arriba (potencialmente creando una nueva raiz y aumentando la altura).
-- **Indice secundario vs primario**: El B+ Tree almacena pares `(key, RID)` donde RID = (page_num, slot) apunta al HeapFile. Es un indice no-clustered: el orden de los datos en el heap no coincide con el orden de las claves en el arbol.
+- **Indice secundario vs primario**: El B+ Tree almacena pares `(key, RID)` donde RID = (page_num, slot) apunta al HeapFile. Es un indice no-clustered: el orden de los datos en el heap no coincide con el orden de las claves en el árbol.
 
 #### Diagrama
 
-```
-              [30 | 60]                  -- nodo interno (pag 3)
-             /    |    \
-     [10|20|30] [40|50|60] [70|80]       -- hojas (pags 1, 2, 4)
-        |  ->      |  ->     |           -- next_leaf encadena hojas
-
-  range_search(25, 55):
-    1. find_leaf(25) -> pag 1 (O(log_M(N)))
-    2. scan pag 1: 30 >= 25 -> collect
-    3. next_leaf -> pag 2: 40, 50 <= 55 -> collect; 60 > 55 -> STOP
-    Total: 3-4 lecturas de pagina
-```
+![B+ Tree](img/diagramabplus.png)
 
 ---
 
@@ -609,11 +598,11 @@ Insertar 16 (hash=00, bucket A lleno):
 
 #### Descripcion
 
-Indice espacial 2D para puntos (x, y). Cada nodo interno contiene MBRs (Minimum Bounding Rectangles) que envuelven los puntos de sus subarboles. Soporta busqueda circular (radio) y k-NN (k vecinos mas cercanos). Usa **Quadratic Split** de Guttman para particion de nodos.
+Indice espacial 2D para puntos (x, y). Cada nodo interno contiene MBRs (Minimum Bounding Rectangles) que envuelven los puntos de sus subarboles. Soporta búsqueda circular (radio) y k-NN (k vecinos mas cercanos). Usa **Quadratic Split** de Guttman para particion de nodos.
 
 #### Estructura en disco
 
-- Archivo unico: `indexes/{tabla}_{colX}_{colY}.idx`
+- Archivo único: `indexes/{tabla}_{colX}_{colY}.idx`
 - **Pagina 0**: metadata (`root_page`, `num_pages`)
 - **Hojas**: entries de 24B = `x(8) + y(8) + page_num(4) + slot(4)`
 - **Nodos internos**: entries de 36B = `min_x(8) + min_y(8) + max_x(8) + max_y(8) + child_page(4)`
@@ -637,7 +626,7 @@ FUNCTION add(x, y, rid):
         adjust_tree_with_split(path, leaf, new_node)
 
 FUNCTION quadratic_split(node):
-    seed1, seed2 = pick_seeds(entries)         -- max wasted area
+    seed1, seed2 = pick_seeds(entries)        // max wasted area
     group1 = [seed1], group2 = [seed2]
     WHILE remaining not empty:
         pick entry with max |enlargement1 - enlargement2|
@@ -660,7 +649,7 @@ FUNCTION radius_search(cx, cy, radius):
         ELSE:
             FOR entry IN node.entries:
                 IF mbr_intersects_circle(entry.mbr, cx, cy, radius):
-                    stack.push(entry.child)    -- poda: solo explora MBRs relevantes
+                    stack.push(entry.child)    // poda: solo explora MBRs relevantes
     RETURN results sorted by distance
 ```
 
@@ -691,7 +680,7 @@ FUNCTION knn_search(qx, qy, k):
 
 - **Clave compuesta (longitude, latitude)**: Cada punto se almacena como dos FLOAT (8B cada uno). La columna de tipo `POINT` en la tabla se serializa como `(x, y)` y se indexa en el R-Tree. El indice almacena `x(8) + y(8) + page_num(4) + slot(4) = 24B` por entrada en las hojas.
 - **Quadratic Split de Guttman**: Cuando un nodo supera `max_entries` (170 para hojas, 113 para internos), se ejecuta el algoritmo de particion cuadratica:
-  1. `pick_seeds`: selecciona las dos entries cuyo MBR combinado desperdicia mas area.
+  1. `pick_seeds`: selecciona las dos entries cuyo MBR combinado desperdicia más area.
   2. Iterativamente asigna cada entry restante al grupo cuyo MBR se agranda menos.
   3. Complejidad: O(n^2) por split, donde n = entries del nodo.
 - **Poda por MBR**: Tanto `radius_search` como `knn_search` usan `mbr_intersects_circle` para descartar ramas enteras del arbol sin leerlas. Esto reduce drasticamente los accesos a disco para consultas localizadas.
@@ -699,27 +688,7 @@ FUNCTION knn_search(qx, qy, k):
 
 #### Diagrama
 
-```
-         [MBR_A | MBR_B]                  -- nodo interno
-          /           \
-  [p1 p2 p3 p4]   [p5 p6 p7]             -- hojas con puntos
-
-  MBR_A = (min_x, min_y, max_x, max_y) envuelve p1..p4
-  MBR_B envuelve p5..p7
-
-  Radius search (cx, cy, r):
-    - MBR_A intersecta circulo? -> SI -> explorar hijos
-    - MBR_B intersecta circulo? -> NO -> PODA (no leer pagina)
-
-  kNN search (qx, qy, k=2):
-    min-heap priorizado por distancia:
-    1. push(root, dist=0)
-    2. pop root -> expand: push(MBR_A, min_dist=3.2), push(MBR_B, min_dist=7.1)
-    3. pop MBR_A -> expand hoja: push(p1, d=3.5), push(p2, d=4.1), ...
-    4. pop p1 (d=3.5) -> candidato 1
-    5. pop p2 (d=4.1) -> candidato 2 -> DONE (k=2)
-```
-
+![RTree](img/diagramartree.png)
 ---
 
 ### 2.5 External Sort — TPMMS (`external_sort.py`)
