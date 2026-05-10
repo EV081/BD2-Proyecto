@@ -23,53 +23,15 @@ Toda la persistencia se realiza sobre paginas de tamanio fijo de **4096 bytes**,
 
 ### 1.3 Arquitectura General
 
-```
-SQL Query
-   |
-   v
-PARSER (RAM) --- scanner.py -> parser.py -> ast_nodes.py -> db_visitor.py
-   |
-   v
-ORQUESTADOR (RAM) --- dbengine.py
-   |
-   |-- HEAP STORAGE (RAM+Disco) --- pagemanager.py -> data/*.bin
-   |-- INDICES (RAM+Disco) --- bplus.py / sequentialfile.py / Extendible_Hashing.py / rtree.py -> indexes/*.idx
-   |-- METADATA (RAM+Disco) --- schema.py -> schemas/*.json
-   |-- CONCURRENCIA (solo RAM) --- concurrency.py
-   |-- ORDENAMIENTO (RAM+Disco) --- external_sort.py
-```
+![arquitectura](./img/arquitectura.png)
 
-El flujo de ejecucion sigue el patron:
+El frontend mapea las consultas y las envia al backen, el cual inicia el siguiente flujo de ejecucion:
 
 1. **Parser** (RAM): El scanner tokeniza la consulta SQL, el parser construye un AST, y el DBVisitor lo ejecuta.
 2. **Orquestador** (RAM): `DataBase` (dbengine.py) coordina la interaccion entre almacenamiento, indices y metadata.
 3. **Storage + Indices** (RAM <-> Disco): PageManager realiza I/O de paginas de 4096B; cada estructura de indexacion serializa/deserializa sus nodos sobre estas paginas.
 
-```
-                    RAM                          DISCO
-              +---------------+            +------------------+
-  Consulta -> | Parser/AST    |            |                  |
-              | DBEngine      |--read_page-> data/tabla.bin   |
-              |   |           |<-bytearray-|  (heap pages)    |
-              | PageManager   |--write_page>                  |
-              |               |            |                  |
-              | BPlusTree     |--read_node-> indexes/*.idx    |
-              |  (node dict)  |<-unmarshal-|  (B+ pages)      |
-              |               |            |                  |
-              | SeqFile       |--read_data-> indexes/*.idx    |
-              |  (entries)    |<-page buf--|  (main+aux pags) |
-              |               |            |                  |
-              | ExtHash       |--read_page-> indexes/*.idx    |
-              | (directory)   |<-bucket----|  (hash buckets)  |
-              |               |            |                  |
-              | RTree         |--read_node-> indexes/*.idx    |
-              |  (MBR nodes)  |<-unmarshal-|  (rtree pages)   |
-              |               |            |                  |
-              | LockManager   |            |  (sin disco)     |
-              |  (locks,      |            |                  |
-              |   wait-for)   |            |                  |
-              +---------------+            +------------------+
-```
+![flujo](./img/flujo.png)
 
 ---
 
@@ -819,9 +781,7 @@ Sea N = numero de registros, M = orden del arbol/entries por pagina, P = numero 
 
 El parser consta de tres etapas secuenciales:
 
-```
-Texto SQL -> [Scanner] -> Tokens -> [Parser] -> AST -> [DBVisitor] -> Resultados
-```
+![flujo-parser](./img/fparser.png)
 
 1. **Scanner** (`scanner.py`): analisis lexico — convierte texto en tokens.
 2. **Parser** (`parser.py`): analisis sintactico — convierte tokens en AST (Abstract Syntax Tree) usando **descenso recursivo**.
@@ -875,60 +835,11 @@ SignedNum   ::= [ "-" ] Number
 
 ### 4.4 Automata del Scanner
 
-El scanner implementa un automata finito determinista con los siguientes estados:
+El scanner implementa un automata finito determinista:
 
-```
-Estado inicial (q0):
-    |
-    |-- whitespace ---------> q0 (ignorar, avanzar posicion)
-    |-- EOF -----------------> emit TOKEN(EOF)
-    |-- '"' o "'" -----------> q_string (leer hasta cierre de comilla)
-    |-- digit ---------------> q_number (leer digitos, opcionalmente '.' + digitos)
-    |-- alpha o '_' ---------> q_id (leer alfanumericos)
-    |       |-- lookup en KEYWORDS -> emit keyword o ID
-    |-- operador doble? (<=, >=, !=) -> emit operador doble
-    |-- operador simple? (=, <, >, etc) -> emit operador simple
-    |-- otro ----------------> emit ERROR
+![afd](./img/afd.png)
 
-q_string:
-    leer caracteres hasta encontrar comilla de cierre
-    emit TOKEN(STRING_LITERAL, texto_interno)
-
-q_number:
-    leer digitos consecutivos
-    IF '.': leer mas digitos (parte decimal -> float)
-    emit TOKEN(NUMBER, valor_numerico)
-
-q_id:
-    leer alfanumericos y '_'
-    lookup en tabla KEYWORDS (40 entradas)
-    IF found: emit TOKEN(keyword_type)
-    ELSE: emit TOKEN(ID, lexema)
-```
-
-### 4.5 Diagrama del automata
-
-```
-        whitespace
-      +----------+
-      |          |
-      v          |
----> [q0] ------+
-      |  |  |  |  |
-      |  |  |  |  +-- '"' --> [q_str] --cierre--> emit STRING
-      |  |  |  |
-      |  |  |  +-- digit --> [q_num] --no digit--> emit NUMBER
-      |  |  |           |
-      |  |  |           +-- '.' --> [q_float] --no digit--> emit NUMBER
-      |  |  |
-      |  |  +-- alpha --> [q_id] --no alnum--> lookup --> emit ID/KEYWORD
-      |  |
-      |  +-- op2? (<=, >=, !=) --> emit OP2
-      |
-      +-- op1? (=, <, >, *, (, ), etc) --> emit OP1
-```
-
-### 4.6 Parser recursivo descendente
+### 4.5 Parser recursivo descendente
 
 El parser implementa una funcion por cada no-terminal de la gramatica. Ejemplo del metodo `parse_select`:
 
@@ -948,7 +859,7 @@ def parse_select(self):
     return SelectStmt(columns, table, condition, order_by)
 ```
 
-### 4.7 Ejemplos de consultas soportadas
+### 4.6 Ejemplos de consultas soportadas
 
 ```sql
 -- Crear tabla con PRIMARY KEY e indices
@@ -977,9 +888,11 @@ INSERT INTO empleados VALUES (101, 'Juan', 4500.0, -12.05, -77.03);
 -- Eliminacion
 DELETE FROM empleados WHERE id = 101;
 
--- Ordenamiento con TPMMS
+-- Ordenamiento
 SELECT * FROM empleados ORDER BY salario;
 ```
+
+Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verificar su correcto funcionamiento. 
 
 ---
 
