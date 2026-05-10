@@ -92,10 +92,32 @@ El parser detecta `PRIMARY KEY` en la definicion de columna:
 `PRIMARY KEY` garantiza **unicidad**: inserciones duplicadas actualizan el registro existente en vez de insertar uno nuevo.
 
 ---
+<!-- _class: section -->
+
+# 3. Clustered vs Unclustered
+---
+
+# Clustered vs Unclustered
+
+**Unclustered (por defecto):** HeapFile almacena registros desordenados. Todos los indices son secundarios y apuntan a un RID `(page, slot)` en el heap.
+
+**Clustered (Sequential File como PK):** El Sequential File almacena los registros completos ordenados por la clave primaria. No existe HeapFile. Los indices secundarios apuntan a `(page, slot)` dentro del propio Sequential File.
+
+```sql
+-- Unclustered: HeapFile + B+Tree sobre id
+CREATE TABLE t (id INT PRIMARY KEY, nombre VARCHAR(50));
+
+-- Clustered: SeqFile ES la tabla, ordenada por id
+CREATE TABLE t (id INT INDEX SEQUENTIAL, nombre VARCHAR(50));
+```
+
+Cuando el Sequential File se reconstruye, los RIDs cambian y se dispara un **callback** que reconstruye automaticamente los indices secundarios.
+
+---
 
 <!-- _class: section -->
 
-# 3. B+ Tree
+# 4. B+ Tree
 
 ---
 
@@ -122,7 +144,7 @@ Indice **por defecto para PRIMARY KEY** (unclustered). Tambien disponible como i
 
 <!-- _class: section -->
 
-# 4. R-Tree
+# 5. R-Tree
 
 ---
 
@@ -151,7 +173,7 @@ SELECT * FROM locales WHERE ubicacion IN (POINT(-12.04, -77.02), K 5);
 
 <!-- _class: section -->
 
-# 5. Extendible Hashing
+# 6. Extendible Hashing
 
 ---
 
@@ -179,7 +201,7 @@ Hash: Knuth multiplicativo `key * 2654435761`, mascara de `global_depth` bits.
 
 <!-- _class: section -->
 
-# 6. Concurrencia
+# 7. Concurrencia
 
 ---
 
@@ -209,7 +231,7 @@ Grafo **wait-for** con deteccion de ciclos via BFS:
 
 <!-- _class: section -->
 
-# 7. Resultados Experimentales
+# 8. Resultados Experimentales
 
 ---
 

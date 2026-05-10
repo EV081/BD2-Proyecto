@@ -1,0 +1,19 @@
+CREATE TABLE Ciudades (id INT PRIMARY KEY,
+name VARCHAR,
+state_id INT,
+state_code VARCHAR,
+state_name VARCHAR,
+country_id INT,
+country_code VARCHAR,
+country_name VARCHAR,
+latitude FLOAT,
+longitude FLOAT,
+wikiDataId VARCHAR) FROM FILE "cities_1k.csv"
+
+
+
+CREATE TABLE cities (id INT PRIMARY KEY, name VARCHAR(40), ubicacion POINT INDEX RTREE) FROM
+  FILE "cities_1k_rtree.csv"
+
+SELECT * FROM cities WHERE ubicacion IN (POINT(48.85, 2.35), RADIUS 2.0)
+SELECT * FROM cities WHERE ubicacion IN (POINT(48.85, 2.35), K 5)
