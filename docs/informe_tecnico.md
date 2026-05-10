@@ -323,7 +323,7 @@ FUNCTION range_search(begin_key, end_key):
                 idx += 1
             page_id += 1                       -- paginas contiguas, acceso secuencial
 
-    -- Fase 3: Scan lineal en aux (no estan ordenadas globalmente)
+    -- Fase 3: Scan lineal en aux (no esta ordenado, orden de llegada hasta llenar max_aux)
     page_id = first_aux
     WHILE page_id != -1:
         entries, next = read_data_page(page_id)
@@ -393,25 +393,46 @@ FUNCTION remove(key):
 #### Consideraciones de implementacion
 
 - **Overflow del area aux**: Cuando la ultima pagina aux se llena, se aloca una nueva pagina y se encadena via `next_page`. Se mantiene un **cache `_last_aux`** que evita recorrer toda la linked list en cada insercion (O(1) en vez de O(P_aux) para localizar la ultima pagina).
-- **Reconstruccion cuando K registros**: El umbral `max_aux` define K. Cuando `num_aux >= max_aux`, se ejecuta la reconstruccion. El valor optimo depende del workload: `max_aux = N/10` para cargas masivas (pocas reconstrucciones), `max_aux = entries_per_page` para workloads con muchas consultas (aux pequenio).
+- **Reconstruccion cuando K registros**: En esta implementación, el umbral `max_aux` corresponde al número máximo de entradas permitidas en el área auxiliar antes de ejecutar una reconstrucción. Para registros de tamaño fijo `S bytes`.
+```
+entry_size = S+1
+max_aux = (PAGE_SIZE-8) // (S+1)
+```
+Ej. Para un record de S = 175B (ejemplo de la demo) la reconstrucción ocurre aproximadamente cada `max_aux = 23` inserciones.
 - **Mantenimiento de punteros**: En modo clustered, la reconstruccion invalida todos los (page_id, slot) de indices secundarios. Se usa un callback `on_reconstruct` para notificar al `DataBase` que reconstruya los indices B+ Tree, Hash y R-Tree que apuntan a la tabla.
+- **Página 0 Metadata global**: En la página 0 se guardan valores necesarios para mantener la información necesaria del sequential file:
+```
+- num_main    : Cantidad total de entradas en el area main
+- num_aux     : Cantidad actual de entradas en el area aux 
+- head_page   : Número de la primera pagina main
+- num_pages   : Total de paginas reservadas en el archivo
+- max_aux     : Umbral maximo de entradas permitidas en aux antes de reconstruir
+- first_aux   : Numero de la pagina auxiliar (-1 si no existe)
+- num_deleted : Cantidad de registros marcados como deleted (soft deleted)
+- 
+```
 
 #### Diagrama
+
+Por convenciones:
+ - **Clustered**: Lo que guarda en cada record del `sequential_file` -> `[index_key, record_info]`
+ - **Unclusterd**: Lo que guarda en cada record del `sequential_file` -> `[index_key, (page_id, slot)]`
+ Para mostrar un ejemplo de creación, usaremos `[index_key, record_info]` para representar ambos casos.
 
 ```
 +-------------------------------------------------+
 | Pag 0: METADATA                                  |
-|   head_page=1, first_aux=3, num_main=8, num_aux=2|
-|   max_aux=4, num_deleted=0                        |
+|  head_page=1, first_aux=3, num_main=8, num_aux=2 |
+|  max_aux=4, num_deleted=0                        |
 +-------------------------------------------------+
 | Pag 1: MAIN (sorted, contigua)    next -> Pag 2  |
-|   [1,RID] [3,RID] [5,RID] [7,RID]                |
+|   [1,RI] [3,RI] [5,RI] [7,RI]                    |
 +-------------------------------------------------+
 | Pag 2: MAIN (sorted, contigua)    next -> -1     |
-|   [9,RID] [11,RID] [13,RID] [15,RID]             |
+|   [9,RI] [11,RI] [13,RI] [15,RI]                 |
 +-------------------------------------------------+
-| Pag 3: AUX (sorted intra-page)    next -> -1     |
-|   [2,RID] [6,RID]                                |
+| Pag 3: AUX (heap input)           next -> -1     |
+|   [2,RI] [6,RI]                                  |
 +-------------------------------------------------+
 
   Binary search: clave 11
@@ -419,12 +440,15 @@ FUNCTION remove(key):
     mid = pag 2: [9..15] -> 9 <= 11 <= 15 -> FOUND
     bisect dentro de pag 2 -> slot 1
 
+--- Agregando records con index_key = [6, 8] ---
 --- Despues de reconstruct() ---
 
 +-------------------------------------------------+
-| Pag 1: MAIN   [1,2,3,5,6]    next -> Pag 2      |
+| Pag 1: MAIN   [1,2,3,5]        next -> Pag 2    |
 +-------------------------------------------------+
-| Pag 2: MAIN   [7,8,9,11,13,15] next -> -1       |
+| Pag 2: MAIN   [6,7,8,9]        next -> -3       |
++-------------------------------------------------+
+| Pag 3: MAIN   [11,13,15]       next -> -1       |
 +-------------------------------------------------+
 Aux: vacio, archivo truncado, paginas contiguas
 ```
