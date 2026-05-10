@@ -1138,13 +1138,13 @@ sequenceDiagram
     TX2->>DB: Solicita X-lock en Page 0
     DB-->>TX2: Esperando a TX1...
 
-    Note Red over TX1, TX2: ¡DEADLOCK DETECTADO!
+    Note over TX1, TX2: ¡DEADLOCK DETECTADO!
 
     Note over TX1, TX2: Paso 3: Resolución (TX2 elegida como víctima)
     TX2->>TX2: DeadlockError & ABORT
     TX2->>DB: Libera X-lock en Page 1
     DB-->>TX1: X-lock en Page 1 (Concedido)
-    Note success over TX1: TX1 continúa
+    Note over TX1: TX1 continúa
 ```
 
 ```mermaid
