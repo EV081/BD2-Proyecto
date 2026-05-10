@@ -22,9 +22,13 @@ Universidad de Ingenieria y Tecnologia (UTEC)
 
 # Arquitectura General
 
-```
-SQL Query -> [Scanner] -> [Parser] -> [AST] -> [DBVisitor] -> [DataBase] -> Disco
-```
+![w:700px h:500px](/home/vssz/UTEC/5to/bd2/BD2-Proyecto/docs/img/ArquitecturaGeneral.jpeg)
+
+
+---
+
+# Arquitectura General
+
 
 - Todas las estructuras operan sobre **paginas de 4096 bytes** (PageManager)
 - Contadores `disk_reads` / `disk_writes` para medir I/O real
@@ -36,25 +40,6 @@ SQL Query -> [Scanner] -> [Parser] -> [AST] -> [DBVisitor] -> [DataBase] -> Disc
 | `data/*.bin` | Registros (HeapFile) | Paginas de 4096B con slots |
 | `indexes/*.idx` | Indices (B+Tree, Hash, RTree, SeqFile) | Paginas de 4096B |
 | `schemas/*.json` | Metadata de tablas | JSON |
-
----
-
-# Clustered vs Unclustered
-
-**Unclustered (por defecto):** HeapFile almacena registros desordenados. Todos los indices son secundarios y apuntan a un RID `(page, slot)` en el heap.
-
-**Clustered (Sequential File como PK):** El Sequential File almacena los registros completos ordenados por la clave primaria. No existe HeapFile. Los indices secundarios apuntan a `(page, slot)` dentro del propio Sequential File.
-
-```sql
--- Unclustered: HeapFile + B+Tree sobre id
-CREATE TABLE t (id INT PRIMARY KEY, nombre VARCHAR(50));
-
--- Clustered: SeqFile ES la tabla, ordenada por id
-CREATE TABLE t (id INT INDEX SEQUENTIAL, nombre VARCHAR(50));
-```
-
-Cuando el Sequential File se reconstruye, los RIDs cambian y se dispara un **callback** que reconstruye automaticamente los indices secundarios.
-
 ---
 
 <!-- _class: section -->
