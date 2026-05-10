@@ -25,7 +25,7 @@ Toda la persistencia se realiza sobre paginas de tamanio fijo de **4096 bytes**,
 
 ### 1.3 Arquitectura General
 
-![arquitectura](./img/arquitectura.png)
+![arquitectura](docs/img/arquitectura.png)
 
 El frontend mapea las consultas y las envia al backen, el cual inicia el siguiente flujo de ejecucion:
 
@@ -33,7 +33,7 @@ El frontend mapea las consultas y las envia al backen, el cual inicia el siguien
 2. **Orquestador** (RAM): `DataBase` (dbengine.py) coordina la interaccion entre almacenamiento, indices y metadata.
 3. **Storage + Indices** (RAM <-> Disco): PageManager realiza I/O de paginas de 4096B; cada estructura de indexacion serializa/deserializa sus nodos sobre estas paginas.
 
-![flujo](./img/flujo.png)
+![flujo](docs/img/flujo.png)
 
 ---
 
@@ -142,7 +142,7 @@ FUNCTION remove(key):
 
 #### Diagrama
 
-![B+ Tree](img/diagramabplus.png)
+![B+ Tree](docs/img/diagramabplus.png)
 
 ---
 
@@ -668,7 +668,7 @@ FUNCTION knn_search(qx, qy, k):
 
 #### Diagrama
 
-![RTree](img/diagramartree.png)
+![RTree](docs/img/diagramartree.png)
 ---
 
 ### 2.5 External Sort — TPMMS (`external_sort.py`)
@@ -768,7 +768,7 @@ Sea N = numero de registros, M = orden del arbol/entries por pagina, P = numero 
 
 El parser consta de tres etapas secuenciales:
 
-![flujo-parser](./img/fparser.png)
+![flujo-parser](docs/img/fparser.png)
 
 1. **Scanner** (`scanner.py`): analisis lexico — convierte texto en tokens.
 2. **Parser** (`parser.py`): analisis sintactico — convierte tokens en AST (Abstract Syntax Tree) usando **descenso recursivo**.
@@ -824,7 +824,7 @@ SignedNum   ::= [ "-" ] Number
 
 El scanner implementa un automata finito determinista:
 
-![afd](./img/afd.png)
+![afd](docs/img/afd.png)
 
 ### 4.5 Parser recursivo descendente
 
@@ -897,7 +897,7 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 
 #### Accesos a disco totales
 
-![Insercion: Accesos a disco totales](img/insert_disk_total.png)
+![Insercion: Accesos a disco totales](docs/img/insert_disk_total.png)
 
 | N | B+ Tree | Sequential File | Ext. Hashing |
 |---|---|---|---|
@@ -907,7 +907,7 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 
 #### Accesos a disco por registro
 
-![Insercion: Accesos por registro](img/insert_disk_per_record.png)
+![Insercion: Accesos por registro](docs/img/insert_disk_per_record.png)
 
 | N | B+ Tree | Sequential File | Ext. Hashing |
 |---|---|---|---|
@@ -917,7 +917,7 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 
 #### Tiempo total de insercion
 
-![Insercion: Tiempo total](img/insert_time.png)
+![Insercion: Tiempo total](docs/img/insert_time.png)
 
 | N | B+ Tree | Sequential File | Ext. Hashing |
 |---|---|---|---|
@@ -929,7 +929,7 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 
 #### Accesos a disco promedio por consulta
 
-![Busqueda puntual: Accesos a disco](img/search_disk.png)
+![Busqueda puntual: Accesos a disco](docs/img/search_disk.png)
 
 | N | B+ Tree | Sequential File | Ext. Hashing |
 |---|---|---|---|
@@ -939,7 +939,7 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 
 #### Tiempo promedio por consulta
 
-![Busqueda puntual: Tiempo](img/search_time.png)
+![Busqueda puntual: Tiempo](docs/img/search_time.png)
 
 | N | B+ Tree | Sequential File | Ext. Hashing |
 |---|---|---|---|
@@ -951,7 +951,7 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 
 #### Accesos a disco promedio por consulta
 
-![Busqueda por rango: Accesos a disco](img/range_disk.png)
+![Busqueda por rango: Accesos a disco](docs/img/range_disk.png)
 
 | N | B+ Tree | Sequential File | Ext. Hashing |
 |---|---|---|---|
@@ -961,7 +961,7 @@ Se implementa lógica en `run_all_inputs.py` para testear solo el parser y verif
 
 #### Tiempo promedio por consulta
 
-![Busqueda por rango: Tiempo](img/range_time.png)
+![Busqueda por rango: Tiempo](docs/img/range_time.png)
 
 | N | B+ Tree | Sequential File | Ext. Hashing |
 |---|---|---|---|
