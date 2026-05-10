@@ -5,6 +5,8 @@
 
 ---
 
+Presntación grabada en: [Grabación](https://drive.google.com/file/d/1h8ZmYeeNjYH2g-VXkvrgvBhSr_cELIAv/view?usp=drive_link)
+
 ## 1. Introduccion y Objetivo
 
 ### 1.1 Introduccion
@@ -586,27 +588,37 @@ La mascara `(1 << global_depth) - 1` extrae los `global_depth` bits menos signif
 
 ```mermaid
 flowchart TB
-        GD[global_depth = 2]
+    GD[global_depth = 2]
 
-        subgraph DIR[Directory - 4 entries]
-                D00[00 -> Bucket A\nlocal_depth = 2\n[4, 8, 12]]
-                D01[01 -> Bucket B\nlocal_depth = 2\n[1, 5, 9]]
-                D10[10 -> Bucket C\nlocal_depth = 2\n[2, 6, 10]]
-                D11[11 -> Bucket D\nlocal_depth = 2\n[3, 7, 11]]
-        end
+    subgraph DIR [Directory - 4 entries]
+        D00["00 -> Bucket A
+        local_depth = 2
+        [4, 8, 12]"]
+        D01["01 -> Bucket B
+        local_depth = 2
+        [1, 5, 9]"]
+        D10["10 -> Bucket C
+        local_depth = 2
+        [2, 6, 10]"]
+        D11["11 -> Bucket D
+        local_depth = 2
+        [3, 7, 11]"]
+    end
 
-        GD --> DIR
+    GD --> DIR
 
-        Q[search(key = 5)] --> H[hash(5) AND 0b11 = 01]
-        H --> D01
-        D01 --> F[Scan bucket B and find 5]
+    Q["search(key = 5)"] --> H["hash(5) AND 0b11 = 01"]
+    H --> D01
+    D01 --> F["Scan bucket B and find 5"]
 
-        I[insert key = 16\n(hash = 00)] --> A[Bucket A full]
-        A --> C{local_depth == global_depth?}
-        C -- yes --> U[Duplicate directory\n4 -> 8 entries]
-        U --> GD3[global_depth = 3]
-        GD3 --> R[Redistribute entries by bit 2]
-        R --> N[Update directory pointers for Bucket A]
+    I["insert key = 16
+    (hash = 00)"] --> A["Bucket A full"]
+    A --> C{"local_depth == global_depth?"}
+    C -- yes --> U["Duplicate directory
+    4 -> 8 entries"]
+    U --> GD3["global_depth = 3"]
+    GD3 --> R["Redistribute entries by bit 2"]
+    R --> N["Update directory pointers for Bucket A"]
 ```
 
 ---
