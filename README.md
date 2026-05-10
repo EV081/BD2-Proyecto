@@ -409,7 +409,6 @@ Ej. Para un record de S = 175B (ejemplo de la demo) la reconstrucción ocurre ap
 - max_aux     : Umbral maximo de entradas permitidas en aux antes de reconstruir
 - first_aux   : Numero de la pagina auxiliar (-1 si no existe)
 - num_deleted : Cantidad de registros marcados como deleted (soft deleted)
-- 
 ```
 
 #### Diagrama
@@ -446,7 +445,7 @@ Por convenciones:
 +-------------------------------------------------+
 | Pag 1: MAIN   [1,2,3,5]        next -> Pag 2    |
 +-------------------------------------------------+
-| Pag 2: MAIN   [6,7,8,9]        next -> -3       |
+| Pag 2: MAIN   [6,7,8,9]        next -> 3        |
 +-------------------------------------------------+
 | Pag 3: MAIN   [11,13,15]       next -> -1       |
 +-------------------------------------------------+
