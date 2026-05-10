@@ -1,0 +1,80 @@
+========================================================================
+  REPORTE DE CONCURRENCIA
+========================================================================
+
+PROTOCOLO: Strict Two-Phase Locking (S2PL)
+------------------------------------------------------------------------
+  Granularidad:  Bloqueos a nivel de pagina
+  Lock tipos:    SHARED (S) — lectura, multiples TX simultaneas
+                 EXCLUSIVE (X) — escritura, exclusion mutua
+  Upgrade:       S -> X permitido si TX es unico holder
+  Liberacion:    Solo en COMMIT o ABORT (strict 2PL)
+  Deadlock:      Deteccion via grafo wait-for (BFS)
+  Resolucion:    TX victima recibe DeadlockError y hace ABORT
+
+TRANSACCIONES
+------------------------------------------------------------------------
+  Total: 2 transacciones
+
+  TX1 [ABORT]
+    Inicio: 20:21:57.298  Fin: 20:21:57.299  Duracion: 1.0 ms
+    Locks: 2 S + 0 X  |  I/O: 2 reads + 0 writes
+    ERROR: TX1: deadlock detectado esperando page 1
+    Flujo: BEGIN -> SEARCH(key=10) -> DELETE(key=15) -> ERROR(TX1: deadlock detectado esperando page 1) -> ABORT
+
+  TX2 [COMMIT]
+    Inicio: 20:21:57.298  Fin: 20:21:57.313  Duracion: 15.0 ms
+    Locks: 2 S + 2 X  |  I/O: 2 reads + 2 writes
+    Flujo: BEGIN -> SEARCH(key=15) -> INSERT(key=500 val=(2, 500)) -> COMMIT
+
+LOCKS POR PAGINA
+------------------------------------------------------------------------
+  Page 0: 1 locks (X) por TX [2] 
+  Page 1: 5 locks (S, X) por TX [1, 2] CONTENTION
+
+CONFLICTOS DETECTADOS
+------------------------------------------------------------------------
+  Total: 1 conflictos
+
+  Read-Write (R-W): 1
+    Page 1: TX [1, 2]
+
+  Resolucion: Strict 2PL garantiza serializabilidad.
+  Las TX esperan por locks compatibles. Si se detecta un
+  ciclo en el grafo wait-for, la TX victima hace ABORT
+  y libera todos sus locks (wound-wait simplificado).
+
+DEADLOCKS Y ABORTS
+------------------------------------------------------------------------
+  Deadlocks detectados: 1
+  Transacciones abortadas: 1
+    TX1 @ 20:21:57: TX1: deadlock detectado esperando page 1
+
+TIMELINE COMPLETO
+------------------------------------------------------------------------
+  [20:21:57.298] TX 1  BEGIN           
+  [20:21:57.298] TX 1  SEARCH          key=10
+  [20:21:57.298] TX 1  LOCK_S          page=1
+  [20:21:57.298] TX 2  BEGIN           
+  [20:21:57.298] TX 2  SEARCH          key=15
+  [20:21:57.298] TX 2  LOCK_S          page=1
+  [20:21:57.299] TX 1  READ            page=1
+  [20:21:57.299] TX 1  FOUND           key=10
+  [20:21:57.299] TX 2  READ            page=1
+  [20:21:57.299] TX 2  FOUND           key=15
+  [20:21:57.299] TX 2  INSERT          key=500 val=(2, 500)
+  [20:21:57.299] TX 2  LOCK_S          page=1
+  [20:21:57.299] TX 1  DELETE          key=15
+  [20:21:57.299] TX 1  LOCK_S          page=1
+  [20:21:57.299] TX 2  READ            page=1
+  [20:21:57.299] TX 1  READ            page=1
+  [20:21:57.299] TX 1  ERROR           TX1: deadlock detectado esperando page 1
+  [20:21:57.299] TX 1  ABORT           
+  [20:21:57.299] TX 2  LOCK_X          page=1
+  [20:21:57.299] TX 2  WRITE           page=1
+  [20:21:57.299] TX 2  LOCK_X          page=0
+  [20:21:57.313] TX 2  WRITE           page=0
+  [20:21:57.313] TX 2  INSERT_OK       key=500
+  [20:21:57.313] TX 2  COMMIT          
+
+========================================================================

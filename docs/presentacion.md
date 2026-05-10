@@ -81,8 +81,8 @@ Texto SQL -> [Scanner] -> Tokens -> [Parser] -> AST -> [DBVisitor] -> Ejecucion
 |---|---|
 | `CREATE TABLE ... (col TYPE [PRIMARY KEY] [INDEX tech])` | Crea tabla + indices |
 | `SELECT ... WHERE col = val / BETWEEN / IN (POINT, RADIUS/K)` | Busqueda + espacial |
-| `INSERT INTO ... VALUES (...)` | Insercion |
-| `DELETE FROM ... WHERE col = val` | Eliminacion |
+| `INSERT INTO ... VALUES (...)` | Inserción |
+| `DELETE FROM ... WHERE col = val` | Eliminación |
 | `SELECT ... ORDER BY col` | Ordenamiento externo (TPMMS) |
 
 ---
@@ -231,13 +231,13 @@ Grafo **wait-for** con deteccion de ciclos via BFS:
 # Metodologia
 
 - **Dataset**: `cities.csv` — 5 columnas (id, country_id, lat, lon, name)
-- **Tamanios**: N = 1,000 / 10,000 / 100,000 registros
+- **Tamaños**: N = 1,000 / 10,000 / 100,000 registros
 - **Metricas**: accesos a disco (paginas 4096B) y tiempo (ms)
 - **Consultas**: 200 busquedas puntuales + 200 por rango (span=500)
 
 ---
 
-# Insercion — Accesos a disco totales
+# Inserción — Accesos a disco totales
 
 <div class="result-row">
 <div class="col-img">
@@ -260,7 +260,7 @@ Ext. Hashing: costo constante ~5 accesos/registro
 
 ---
 
-# Insercion — Accesos por registro
+# Inserción — Accesos por registro
 
 <div class="result-row">
 <div class="col-img">
@@ -283,7 +283,7 @@ Seq. File crece por reconstrucciones periodicas
 
 ---
 
-# Insercion — Tiempo total
+# Inserción — Tiempo total
 
 <div class="result-row">
 <div class="col-img">
@@ -400,8 +400,8 @@ Seq. File: **17 accesos vs 341 del B+ Tree** (100K)
 |---|---|---|
 | Busqueda puntual | **Ext. Hashing** | O(1): 2 accesos constantes |
 | Busqueda por rango | **Seq. File** | Paginas contiguas, localidad maxima |
-| Insercion | **Ext. Hashing** | ~5 accesos/registro, constante |
-| Balance general | **B+ Tree** | Soporta igualdad + rangos, insercion estable |
+| Inserción | **Ext. Hashing** | ~5 accesos/registro, constante |
+| Balance general | **B+ Tree** | Soporta igualdad + rangos, inserción estable |
 | Consultas espaciales | **R-Tree** | Unico que soporta radio y k-NN |
 
 **Trade-off clave**: Ext. Hashing es el mas rapido para igualdad pero **no soporta rangos**. B+ Tree es la opcion mas versatil.
